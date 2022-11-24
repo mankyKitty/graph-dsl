@@ -3,16 +3,18 @@ module Tests
 open System
 open Xunit
 
-open GraphDSL.TranscriptionFactor
 open FParsec
+
+open GraphDSL.TranscriptionFactor
+open GraphDSL.NetworkGraph
 
 [<Fact>]
 let ``Single Valid Parse - TranscriptionFactor`` () =
     let input = "AcrR	marR	-	[GEA, APPH, GEA, IEP, IMP, APIORCISFBSCS, BPP]	STRONG"
 
     let expected =
-        { Name = "AcrR"
-          RegulatedBy = "marR"
+        { Name = TFName "AcrR"
+          RegulatedBy = TFName "marR"
           RegulatoryEffect = Repressor
           SupportingEvidence = [ "GEA"; "APPH"; "GEA"; "IEP"; "IMP"; "APIORCISFBSCS"; "BPP" ]
           EvidenceType = Strong }
@@ -21,7 +23,8 @@ let ``Single Valid Parse - TranscriptionFactor`` () =
     | Failure (err, _a, _b) -> Assert.True(false, err)
     | Success (tf, _x, _y) -> Assert.Equal(tf, expected)
 
-let manymanyInputs = "CRP	xylR	+	[GEA, AIFS, APPH, APPP, GEA, HIFS, IEP, IHBCE, IMP, IPI, AIBSCS, APIORCISFBSCS]	STRONG	
+let manymanyInputs =
+    "CRP	xylR	+	[GEA, AIFS, APPH, APPP, GEA, HIFS, IEP, IHBCE, IMP, IPI, AIBSCS, APIORCISFBSCS]	STRONG	
 CRP	zraR	+	[GEA, AIFS, APPH, APPP, GEA, HIFS, IEP, IHBCE, IMP, IPI, AIBSCS]	STRONG	
 CRP-Sxy	sxy	+	[GEA, IMP, APIORCISFBSCS]	WEAK	
 CadC	cadC	+	[GEA, IMP, BPP]	STRONG	
@@ -40,17 +43,26 @@ Cra	csgD	+	[GEA, APPH, HIFS, AIBSCS, BPP, SM]	STRONG
 Cra	glcC	-	[GEA, APPH, HIFS, AIBSCS]	STRONG	
 kCra	marA	-	[GEA, APPH, HIFS, AIBSCS]	STRONG  
 "
+
 [<Fact>]
 let ``Several Valid TranscriptionFactor`` () =
     match run (many1 (pTranscriptionFactor .>> (spaces >>. optional skipNewline))) manymanyInputs with
-        | Failure (err, _a, _b) -> Assert.True(false, err)
-        | Success (xs, _a, _b) ->
-            printfn "%O" xs
-            Assert.Equal(List.length xs, 18)
+    | Failure (err, _a, _b) -> Assert.True(false, err)
+    | Success (xs, _a, _b) -> Assert.Equal(List.length xs, 18)
 
 [<Fact>]
 let ``Parse network_tf_tf.txt file`` () =
     let enc = new System.Text.UTF8Encoding()
+
+    match runParserOnFile p_network_tf_tf_file () "input_files/network_tf_tf.txt" enc with
+    | Failure (err, _a, _b) -> Assert.True(false, err)
+    | Success (xs, _a_, b) -> Assert.True(List.length xs = 493)
+
+[<Fact>]
+let ``Create an FGL Directed Graph`` () =
+    let enc = new System.Text.UTF8Encoding()
     match runParserOnFile p_network_tf_tf_file () "input_files/network_tf_tf.txt" enc with
         | Failure (err, _a, _b) -> Assert.True(false, err)
-        | Success (xs, _a_, b) -> Assert.True(List.length xs = 493)
+        | Success (xs, _a, _b) ->
+            Console.WriteLine("{0}", tf_tf_graph xs)
+            Assert.True(true, "omg")

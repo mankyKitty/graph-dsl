@@ -9,7 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="GraphDSL.fs" />
+    <Compile Include="GraphDSL/TranscriptionFactor.fs" />
+    <Compile Include="GraphDSL/NetworkGraph.fs" />
+
     <Compile Include="Tests.fs" />
 
     <None Include="./input_files/**/*">
