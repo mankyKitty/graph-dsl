@@ -19,32 +19,34 @@ type Zipper<'V, 'E> =
       History: list<Move<'V, 'E>> }
 
 // A helper function to perform a given movement on the graph and record that in the history.
+let tryMovement
+    (
+        g: BidirectionalGraph<'V, 'E>,
+        z: Zipper<'V, 'E>,
+        fn: ('E -> bool),
+        cons: ('V -> 'E -> Move<'V, 'E>)
+    ) : Option<Zipper<'V, 'E>> =
+    g.OutEdges(z.Cursor)
+    |> Seq.tryFind fn
+    |> Option.map (fun next ->
+        { Cursor = next.Target
+          History = (cons z.Cursor next) :: z.History })
 
 // Create the zipper from the given starting point
 let createZipper (a: 'V) : Zipper<'V, 'E> = { Cursor = a; History = [] }
 
 // From a Vertex, try to move to a specific known vertex that is expected to be connected to this one.
 let moveToVertex (g: BidirectionalGraph<'V, 'E>, z: Zipper<'V, 'E>, v: 'V) : Option<Zipper<'V, 'E>> =
-    match g.OutEdges(z.Cursor) |> Seq.tryFind (fun e -> e.Target = v) with
-    | None -> None
-    | Some (next) ->
-        Some(
-            { Cursor = next.Target
-              History = ((ToVertex(z.Cursor, v)) :: z.History) }
-        )
+    tryMovement (g, z, (fun e -> e.Target = v), (fun c n -> ToVertex(c, v)))
 
 // Move along a known edge that is expected to be connected to the current vertex.
 let moveAlongEdge (g: BidirectionalGraph<'V, 'E>, z: Zipper<'V, 'E>, along: 'E) : Option<Zipper<'V, 'E>> =
-    match
-        g.OutEdges(z.Cursor)
-        |> Seq.tryFind (fun e -> e.Source = along.Source && e.Target = along.Target)
-    with
-    | None -> None
-    | Some (next) ->
-        Some(
-            { Cursor = next.Target
-              History = (AlongEdge(z.Cursor, along) :: z.History) }
-        )
+    tryMovement (
+        g,
+        z,
+        (fun e -> e.Source = along.Source && e.Target = along.Target),
+        (fun c n -> AlongEdge(z.Cursor, along))
+    )
 
 // Inspect the edges leading away from this Vertex and move along the first one that matches the given function.
 let moveAlongFirstMatchingEdge
@@ -53,13 +55,7 @@ let moveAlongFirstMatchingEdge
         z: Zipper<'V, 'E>,
         f: ('E -> bool)
     ) : Option<Zipper<'V, 'E>> =
-    match g.OutEdges(z.Cursor) |> Seq.tryFind (f) with
-    | None -> None
-    | Some (next) ->
-        Some(
-            { Cursor = next.Target
-              History = (FirstEdgeMatching(z.Cursor, f, next) :: z.History) }
-        )
+    tryMovement (g, z, f, (fun c next -> FirstEdgeMatching(c, f, next)))
 
 // Inspect all vertexs one step away from the current not and move to the first one that matches the given function.
 let moveAlongFirstMatchingVertex
@@ -68,13 +64,7 @@ let moveAlongFirstMatchingVertex
         z: Zipper<'V, 'E>,
         f: ('V -> bool)
     ) : Option<Zipper<'V, 'E>> =
-    match g.OutEdges(z.Cursor) |> Seq.tryFind (fun e -> f (e.Target)) with
-    | None -> None
-    | Some (next) ->
-        Some(
-            { Cursor = next.Target
-              History = (FirstVertexMatching(z.Cursor, f, next.Target) :: z.History) }
-        )
+    tryMovement (g, z, (fun e -> f (e.Target)), (fun c n -> FirstVertexMatching(c, f, n.Target)))
 
 // Move one step "back". This reverts the most recent single step.
 let moveBack (z: Zipper<'V, 'E>) : Zipper<'V, 'E> =
