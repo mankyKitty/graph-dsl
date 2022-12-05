@@ -90,7 +90,7 @@ let ``Zipper - Graph Move Along Edge`` () =
 
     match moveAlongEdge (g0, z, e) with
     | None -> Assert.True(false, "Couldn't move along known good edge")
-    | Some (newZ) -> Assert.True(newZ.Cursor = 3, "Did not along correct vertex")
+    | Some (newZ) -> Assert.True(newZ.Cursor = 3, "Did not along correct edge")
 
 [<Fact>]
 let ``Zipper - Graph Along First Matching Edge`` () =
@@ -125,10 +125,10 @@ let ``Zipper - Graph Move Backwards`` () =
 
     match z with
     | None -> Assert.True(false, "Couldn't move correctly")
-    | Some (zz) -> Assert.True(zz.Cursor = 1, "Maybe?")
+    | Some (zz) -> Assert.True(zz.Cursor = 1, "Did not move to expected vertex")
 
     let z1 = Option.map moveBack z
 
     match z1 with
     | None -> Assert.True(false, "Couldn't move correctly")
-    | Some (zz) -> Assert.True(zz.Cursor = 2, "Maybe?")
+    | Some (zz) -> Assert.True(zz.Cursor = 2, "Did not move back to expected vertex")
