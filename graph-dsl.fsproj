@@ -13,6 +13,7 @@
     <Compile Include="GraphDSL/NetworkGraph.fs" />
     <Compile Include="GraphDSL/GraphZipper.fs" />
 
+    <Compile Include="Program.fs" />
     <Compile Include="Tests.fs" />
 
     <None Include="./input_files/**/*">
@@ -24,6 +25,7 @@
   <ItemGroup>
     <PackageReference Include="FParsec-Big-Data-Edition" Version="1.1.1" />
     <PackageReference Include="FSharp.FGL" Version="0.0.3" />
+    <PackageReference Include="FSharp.Json" Version="0.4.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.1.0" />
     <PackageReference Include="QuikGraph" Version="2.5.0" />
     <PackageReference Include="xunit" Version="2.4.2" />
