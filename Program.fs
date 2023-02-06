@@ -2,6 +2,11 @@ module Program
 
 open FSharp.Json
 
+open Suave
+open Suave.Filters
+open Suave.Operators
+open Suave.Successful
+
 type ElemSelect =
     | GraphVertex
     | GraphEdge
@@ -21,36 +26,36 @@ type MoveOp =
     | FirstEdge of CompOp   // Move along the first edge matching the given selection options
     | FirstVertex of CompOp // Try to move to the first vertex connected to the current vertex matching the given comparison
 
-// let encodeCompOp (i : bool, cmp : CompOp) =
-//     let (t, v) = match cmp with
-//     | EqualTo (e, p) ->
-//         let encE = jstring (match e with
-//                             | GraphVertex -> "vertex"
-//                             | GraphEdge -> "edge")
-//         let encP = (match p with
-//                     | Tag s -> jobject ["tag", jstring s]
-//                     | Value v -> jobject ["value", jint v])
-//         ("equalTo", jobject ["property", encE, "args", encP])
-//     | ValueLessThan v -> ("valLessThan", jint v)
-//     | ValueGreaterThan v -> ("valGreaterThan", jint v)
-//     encode i <| jobject [ "comparison", jstring t
-//                           "args", v
-//                           ]
 
-// let encodeMoveOp (i : bool, m : MoveOp) =
-//     let (act, v) = match m with
-//     | ToVertex t -> ("toVertex", jstring t)
-//     | AlongEdge t -> ("alongEdge", jstring t)
-//     | FirstEdge c -> ("firstEdgeMatching", encodeCompOp i c)
-//     | FirstVertex c -> ("firstVertexMatching", encodeCompOp i c)
-//     encode i <| jobject [
-//       "action", jstring act
-//       "actionArgs", v
-//     ]
+// Example for dumping JSON of structures
+// let main argv =
+//     let mv = ToVertex "camels"
+//     let s = Json.serialize mv
+//     printfn "%s" s
+//     0
+
+let f rq =
+    let moveOp =
+      rq.rawForm
+      |> UTF8.toString
+      |> Json.deserialize<MoveOp>
+
+    printfn "We have a MoveOp : %s" <| (match moveOp with
+        | ToVertex _a -> "To Vertex"
+        | AlongEdge _a -> "Along Edge"
+        | FirstEdge _a -> "Along First Matching Edge"
+        | FirstVertex _a -> "Along First Matching Vertex")
+
+    OK (Json.serialize moveOp)
+
+let app =
+    choose
+      [ GET >=> choose
+          [ path "/hello" >=> OK "Hello GET" ]
+        POST >=> choose
+          [ path "/move" >=> request f ] ] // curl -X POST -vv --data "{\"ToVertex\":\"camels\"}" http://localhost:8080/move
 
 [<EntryPoint>]
 let main argv =
-    let mv = ToVertex "camels"
-    let s = Json.serialize mv
-    printfn "%s" s
-
+    startWebServer defaultConfig app
+    0
