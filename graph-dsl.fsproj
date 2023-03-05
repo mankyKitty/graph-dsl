@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FParsec-Big-Data-Edition" Version="1.1.1" />
+    <PackageReference Include="FParsec-Big-Data-Edition" Version="1.1.1" NoWarn="NU1701"/>
     <PackageReference Include="FSharp.FGL" Version="0.0.3" />
     <PackageReference Include="FSharp.Json" Version="0.4.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.1.0" />
