@@ -33,7 +33,7 @@ let pEvidenceType: P<EvidenceType> =
 type TFName = TFName of string
 
 let pTFName: P<TFName> =
-    many1Satisfy (fun c -> isAsciiLetter c || "-".Contains(c)) |>> TFName
+    many1Satisfy (fun c -> isAsciiLetter c || "-".Contains(c) || isDigit c) |>> TFName
 
 // An individual Transaction Factor line is composed of the following components.
 
@@ -45,7 +45,7 @@ let pTFName: P<TFName> =
 //      - For details see: http://regulondb.ccg.unam.mx/evidenceclassification
 type TranscriptionFactor =
     { Name: TFName
-      RegulatedBy: TFName
+      Target: TFName
       RegulatoryEffect: RegulatoryEffect
       SupportingEvidence: string list
       EvidenceType: EvidenceType }
@@ -62,9 +62,9 @@ let pTranscriptionFactor: P<TranscriptionFactor> =
         (pRegulatoryEffect .>> sep0)
         (pevidence .>> sep0)
         pEvidenceType
-        (fun nom regby eff evi evitype ->
-            { Name = nom
-              RegulatedBy = regby
+        (fun name target eff evi evitype ->
+            { Name = name
+              Target = target
               RegulatoryEffect = eff
               SupportingEvidence = evi
               EvidenceType = evitype })

@@ -17,7 +17,7 @@ let ``Single Valid Parse - TranscriptionFactor`` () =
 
     let expected =
         { Name = TFName "AcrR"
-          RegulatedBy = TFName "marR"
+          Target = TFName "marR"
           RegulatoryEffect = Repressor
           SupportingEvidence = [ "GEA"; "APPH"; "GEA"; "IEP"; "IMP"; "APIORCISFBSCS"; "BPP" ]
           EvidenceType = Strong }
