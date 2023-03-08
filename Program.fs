@@ -108,7 +108,8 @@ let generateFreshGraph: AppGraph =
 
     g
 
-// curl -X POST -vvv --data '{"ToVertex":{"Tag":"one","Value":1}}' http://localhost:8080/move
+// $ curl -X POST -vvv --data '{"moveOp":"ToVertex","moveInputs":{"Tag":"one","Value":1}}' http://localhost:8080/move
+// $ curl -X POST -vvv --data '{"moveOp":"Back","moveInputs":[]}' http://localhost:8080/move
 [<EntryPoint>]
 let main argv =
     let mutable g = generateFreshGraph
