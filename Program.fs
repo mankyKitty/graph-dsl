@@ -27,10 +27,11 @@ type CompOp =
     | ValueGreaterThan of int
 
 // Our boundary types are different to the internal zipper types so there isn't conceptual leakage between the two.
+[<JsonUnion(Mode = UnionMode.CaseKeyAsFieldValue, CaseKeyField="moveOp", CaseValueField="moveInputs")>]
 type MoveOp =
-    | ToVertex of Vert // Explicit tag name of the target vertex
+    | ToVertex of Vert      // Explicit tag name of the target vertex
     | AlongEdge of string   // Explicit tag name of the edge to move along.
-    | FirstEdge of string // Move along the first edge matching the given selection options
+    | FirstEdge of string   // Move along the first edge matching the given selection options
     | FirstVertex of CompOp // Try to move to the first vertex connected to the current vertex matching the given comparison
     | Back
 
@@ -67,13 +68,20 @@ let f g z rq =
             z := r
             OK (Json.serialize (!z).Cursor)
 
+let whereami z _rq = OK (Json.serialize (!z).Cursor)
+
 let app g z =
     choose
       [ POST >=> choose
-          [ path "/move" >=> request (f g z) ] ]
+          [ path "/move" >=> request (f g z) ]
+        GET >=> choose
+          [ path "/whereami" >=> request (whereami z) ] ]
 
 let addEdgeOrDie (g: AppGraph, e: TaggedEdge<Vert,string>) =
     if g.AddEdge(e) then () else failwith "Failed to add edge"
+
+let addVertexOrDie2 (g:AppGraph) (v:Vert) =
+    if g.AddVertex(v) then () else failwith "Failed to add edge"
 
 let addVertexOrDie (g: AppGraph, v: Vert) =
     if g.AddVertex(v) then () else failwith "Failed to add edge"
