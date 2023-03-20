@@ -1,0 +1,78 @@
+const http = require('http');
+
+const hostname = '127.0.0.1';
+const port = 3000;
+
+function whereami() {
+    let options = {
+        host: 'localhost',
+        port: 8080,
+        path: '/whereami',
+        method: 'GET',
+        headers: {
+            accept: 'application/json'
+        }
+    };
+    
+    return new Promise ((resolve, reject) => {
+        let request = http.request(options);
+        
+        req.on('response', res => {
+            console.log('Successfully sent a request to whereami on Suave server.');
+            resolve(res);
+        });
+        
+        req.on('error', err => {
+            console.log('Failed to send a request to whereami on Suave server.');
+            reject(err);
+        });
+        
+        req.end();
+    });
+}
+
+const server = http.createServer((req, res) => {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/plain');
+    console.log('Example server has received a connection.');
+    http.get('http://localhost:8080/whereami', (subRes) => {
+        const { statusCode } = subRes;
+        //const contentType = subRes.headers['content-type'];
+        
+        let error;
+        if (statusCode !== 200) {
+            error = new Error('Request Failed.\n' +
+                `Status Code: ${statusCode}`);
+        //} else if (!/^application\/json/.test(contentType)) {
+        //    error = new Error('Invalid content-type.\n' +
+        //        `Expected application/json but received ${contentType}`);
+        }
+        if (error) {
+            console.error(error.message);
+            subRes.resume();
+            res.end(error.message);
+            return;
+        }
+
+        subRes.setEncoding('utf8');
+        let rawData = '';
+        subRes.on('data', (chunk) => { rawData += chunk; });
+        subRes.on('end', () => {
+            try {
+                const parsedData = JSON.parse(rawData);
+                console.log(parsedData);
+                res.end(rawData);
+            } catch (e) {
+                console.error(e.message);
+                res.end(e.message);
+            }
+        });
+    }).on('error', (e) => {
+        console.error(`Got error: ${e.message}`);
+        res.end(`Got error: ${e.message}`);
+    });
+});
+
+server.listen(port, hostname, () => {
+    console.log(`Server running at http://${hostname}:${port}/`);
+});

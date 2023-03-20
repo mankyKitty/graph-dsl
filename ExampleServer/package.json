@@ -1,0 +1,15 @@
+{
+  "name": "exampleserver",
+  "version": "1.0.0",
+  "description": "Example server app to demonstrate F# to/from JSON",
+  "main": "index.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "test"
+  },
+  "author": "n7581769",
+  "dependencies": {
+    "express": "^4.18.2",
+    "nunjucks": "^3.2.3"
+  }
+}

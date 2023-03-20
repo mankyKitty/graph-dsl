@@ -26,6 +26,27 @@ type CompOp =
     | ValueLessThan of int
     | ValueGreaterThan of int
 
+// Types added by n7581769.
+// A record type for storing an edge to be converted to JSON.
+type MiniJsonEdge = {
+    Start : Vert
+    End : Vert
+    Tag : string
+}
+
+// A record type with a list of the above edge types to show what edges are
+// connected to a vertex.
+type ConnectedEdges = {
+    Edges : MiniJsonEdge list
+}
+
+// Version of the above that includes the source vertex, used to create a graph
+// in a visualisation.
+type MiniGraph = {
+    Vertex : Vert
+    Edges : MiniJsonEdge list
+}
+
 // Our boundary types are different to the internal zipper types so there isn't conceptual leakage between the two.
 [<JsonUnion(Mode = UnionMode.CaseKeyAsFieldValue, CaseKeyField="moveOp", CaseValueField="moveInputs")>]
 type MoveOp =
@@ -70,21 +91,43 @@ let f g z rq =
 
 let whereami z _rq = OK (Json.serialize (!z).Cursor)
 
+// Routes added by n7581769.
+// Returns all edges connected to the current vertex.
+let connectedRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) zipper _request =
+    //printfn "Received wheretogo operation."
+    let edges = graph.OutEdges((!zipper).Cursor)
+    let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
+    OK (Json.serialize { Edges = Seq.toList edgesMap })
+    
+// Returns the current vertex and all edges connected to it.
+let getGraphRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) zipper _request =
+    printfn "Received getGraph operation."
+    let currentVertex = (!zipper).Cursor
+    //let edges = Seq.append (graph.OutEdges((!zipper).Cursor))
+    let edges = Seq.filter (fun (item : TaggedEdge<Vert,string>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) graph.Edges
+    let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
+    OK (Json.serialize { Vertex = (!zipper).Cursor; Edges = Seq.toList edgesMap })
+
 let app g z =
     choose
       [ POST >=> choose
           [ path "/move" >=> request (f g z) ]
         GET >=> choose
-          [ path "/whereami" >=> request (whereami z) ] ]
+          [ path "/whereami" >=> request (whereami z) ] //]
+        // Added by n7581769.
+        GET >=> choose
+          [ path "/wheretogo" >=> request (connectedRoute g z) ]
+        GET >=> choose
+          [ path "/getGraph" >=> request (getGraphRoute g z) ] ]
 
 let addEdgeOrDie (g: AppGraph, e: TaggedEdge<Vert,string>) =
     if g.AddEdge(e) then () else failwith "Failed to add edge"
 
 let addVertexOrDie2 (g:AppGraph) (v:Vert) =
-    if g.AddVertex(v) then () else failwith "Failed to add edge"
+    if g.AddVertex(v) then () else failwith "Failed to add vertex"
 
 let addVertexOrDie (g: AppGraph, v: Vert) =
-    if g.AddVertex(v) then () else failwith "Failed to add edge"
+    if g.AddVertex(v) then () else failwith "Failed to add vertex"
 
 let generateFreshGraph: AppGraph =
     let mutable g = new BidirectionalGraph<Vert, TaggedEdge<Vert,string>> ()
