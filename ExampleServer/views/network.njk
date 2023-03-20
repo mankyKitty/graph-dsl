@@ -16,84 +16,131 @@
         <div id="networkDiv"></div>
 
         <script type="text/javascript">
-        
-            // Get the original JSON.
-            let sourceData = JSON.parse({{ data | dump | safe }});
-            
-            // Create an array for the node data to use later.
-            let nodeData = [{id: sourceData.Vertex.Value, label: sourceData.Vertex.Tag}];
-            for (edge of sourceData.Edges) {
-                if (nodeData.find((item) => item.id === edge.End.Value) === undefined) {
-                    nodeData.push({id: edge.End.Value, label: edge.End.Tag});
-                }
-                if (nodeData.find((item) => item.id === edge.Start.Value) === undefined) {
-                    nodeData.push({id: edge.Start.Value, label: edge.Start.Tag});
-                }
-            }
-            
-            // Create an array for the edge data to use later.
-            let edgeData = [];
-            for (edge of sourceData.Edges) {
-                let currentEdge = {from: edge.Start.Value, to: edge.End.Value}
-                if (edgeData.find((item) => item.from === currentEdge.from && item.to === currentEdge.to) === undefined) {
-                    if (currentEdge.to === sourceData.Vertex.Value) {
-                        currentEdge.color = 'red'
+
+            // The current network.
+            let network;
+
+            // Function for getting JSON later.
+            // https://stackoverflow.com/questions/12460378/how-to-get-json-from-url-in-javascript
+            let getJSON = function(url, callback) {
+                let xhr = new XMLHttpRequest();
+                xhr.open('GET', url, true);
+                xhr.responseType = 'json';
+                xhr.onload = function() {
+                    let status = xhr.status;
+                    if (status === 200) {
+                        callback(null, xhr.response);
                     } else {
-                        currentEdge.color = 'green'
+                        callback(status, xhr.response);
                     }
-                    edgeData.push(currentEdge);
+                };
+                xhr.send();
+            };
+
+            // Function for handling the result of a move/back request.
+            let requestHandler = function(err, data) {
+                if (err === 404) {
+                    alert('Something went wrong:\nThe server did not return any data for the requested action.');
+                } else if (err === 400) {
+                    alert('Something went wrong:\nThe server encountered an error while trying to complete the requested action.');
+                } else if (err !== null) {
+                    alert('Something went wrong:\nHTTP status code was ' + err);
+                } else {
+                    generateGraph(data);
                 }
+            };
+
+            // Function for generating a graph with supplied JSON data.
+            let generateGraph = function(sourceData) {
+                // Clear the current network if it exists already.
+                if (network !== undefined) {
+                    network.destroy();
+                }
+
+                // Create an array for the node data to use later.
+                let nodeData = [{id: sourceData.Vertex.Value, label: sourceData.Vertex.Tag}];
+                for (edge of sourceData.Edges) {
+                    if (nodeData.find((item) => item.id === edge.End.Value) === undefined) {
+                        nodeData.push({id: edge.End.Value, label: edge.End.Tag});
+                    }
+                    if (nodeData.find((item) => item.id === edge.Start.Value) === undefined) {
+                        nodeData.push({id: edge.Start.Value, label: edge.Start.Tag});
+                    }
+                }
+
+                // Create an array for the edge data to use later.
+                let edgeData = [];
+                for (edge of sourceData.Edges) {
+                    let currentEdge = {from: edge.Start.Value, to: edge.End.Value}
+                    if (edgeData.find((item) => item.from === currentEdge.from && item.to === currentEdge.to) === undefined) {
+                        if (currentEdge.to === sourceData.Vertex.Value) {
+                            currentEdge.color = 'red'
+                        } else {
+                            currentEdge.color = 'green'
+                        }
+                        edgeData.push(currentEdge);
+                    }
+                }
+
+                // Set up the proper node array for visualisation.
+                let nodes = new vis.DataSet(nodeData);
+
+                // Set up the proper edge array for visualisation.
+                let edges = new vis.DataSet(edgeData);
+
+                // Select the div element to put the network in.
+                let container = document.getElementById('networkDiv');
+
+                // Provide the data in the vis format.
+                let data = {
+                    nodes: nodes,
+                    edges: edges
+                };
+
+                // Options for creating the network.
+                let options = {
+                    interaction: {
+                        dragNodes: false,
+                        navigationButtons: true
+                    },
+                    layout: {
+                        randomSeed: 9001
+                    },
+                    nodes: {
+                        shape: 'text'
+                    },
+                    physics: {
+                        enabled: false
+                    }
+                };
+
+                // Initialize your network!
+                network = new vis.Network(container, data, options);
+                network.stabilize(60);
+
+                // Clicking on a network node.
+                network.on('click', function(properties) {
+                    let ids = properties.nodes;
+                    let clickedNodes = nodes.get(ids);
+                    if (clickedNodes.length > 0) {
+                        //window.location = `http://localhost:3000/move?id=${clickedNodes[0].id}&label=${clickedNodes[0].label}`;
+                        network.unselectAll();
+                        getJSON(`http://localhost:3000/move?id=${clickedNodes[0].id}&label=${clickedNodes[0].label}`, requestHandler);
+                    }
+                });
             }
-            
-            // Set up the proper node array for visualisation.
-            let nodes = new vis.DataSet(nodeData);
 
-            // Set up the proper edge array for visualisation.
-            let edges = new vis.DataSet(edgeData);
+            // Get the original JSON.
+            let pageJson = JSON.parse({{ data | dump | safe }});
 
-            // Select the div element to put the network in.
-            let container = document.getElementById('networkDiv');
+            // Generate the graph.
+            generateGraph(pageJson);
 
-            // Provide the data in the vis format.
-            let data = {
-                nodes: nodes,
-                edges: edges
-            };
-            
-            // Options for creating the network.
-            let options = {
-                interaction: {
-                    dragNodes: false,
-                    navigationButtons: true
-                },
-                layout: {
-                    randomSeed: 9001
-                },
-                nodes: {
-                    shape: 'text'
-                },
-                physics: {
-                    enabled: false
-                }
-            };
-
-            // Initialize your network!
-            let network = new vis.Network(container, data, options);
-            network.stabilize(60);
-            
-            // Clicking on a network node.
-            network.on('click', function(properties) {
-                let ids = properties.nodes;
-                let clickedNodes = nodes.get(ids);
-                if (clickedNodes.length > 0) {
-                    window.location = `http://localhost:3000/move?id=${clickedNodes[0].id}&label=${clickedNodes[0].label}`;
-                }
-            });
-            
             // Clicking on the back button.
             let button = document.getElementById('backButton');
             button.addEventListener('click', function() {
-                window.location = 'http://localhost:3000/back';
+                //window.location = 'http://localhost:3000/back';
+                getJSON('http://localhost:3000/back', requestHandler);
             });
         </script>
     </body>

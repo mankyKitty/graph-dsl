@@ -11,10 +11,10 @@ nunjucks.configure('views', {
 });
 
 function getGraph () {
-    return new Promise((resolve, reject) => { 
+    return new Promise((resolve, reject) => {
         http.get('http://localhost:8080/getGraph', (response) => {
             const { statusCode } = response;
-            
+
             let error;
             if (statusCode !== 200) {
                 error = new Error('Request Failed.\n' +
@@ -78,27 +78,47 @@ app.get('/move', (req, res) => {
             let rawData = '';
             response.on('data', (chunk) => { rawData += chunk; });
             response.on('end', () => {
-                try {
-                    const parsedData = JSON.parse(rawData);
-                    console.log(parsedData);
-                    res.redirect('/');
-                } catch (error) {
-                    console.error(`Got error: ${error.message}`); 
-                    res.redirect('/');    
+                console.log(`Got back status ${response.statusCode}`);
+                if (response.statusCode === 404) {
+                    console.error('The requested move action was invalid for this graph.');
+                    res.status(404);
+                    res.send('The requested move action was invalid for this graph.');
+                } else {
+                    try {
+                        const parsedData = JSON.parse(rawData);
+                        console.log(parsedData);
+                        //res.redirect('/');
+                        getGraph().then((graphData) => {
+                            res.send(graphData);
+                        })
+                        .catch((error) => {
+                            console.error(`Got error: ${error.message}`);
+                            res.send(`Got error: ${error.message}`);
+                        });
+                    } catch (error) {
+                        console.error(`Got error: ${error.message}`);
+                        //res.redirect('/');
+                        res.status(400);
+                        res.send(`Got error: ${error.message}`);
+                    }
                 }
             });
         });
-        
+
         req.on('error', (error) => {
-            console.error(`Got error: ${error.message}`);  
-            res.redirect('/');        
+            console.error(`Got error: ${error.message}`);
+            //res.redirect('/');
+            res.status(400);
+            res.send(`Got error: ${error.message}`);
         });
 
         request.write(data);
         request.end();
     } else {
         console.error(`Did not get correct paramaters for move operation (Got ${tag} and ${value}).`);
-        res.redirect('/');
+        //res.redirect('/');
+        res.status(400);
+        res.send(`Did not get correct paramaters for move operation (Got ${tag} and ${value}).`);
     }
 });
 
@@ -121,20 +141,38 @@ app.get('/back', (req, res) => {
         let rawData = '';
         response.on('data', (chunk) => { rawData += chunk; });
         response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(rawData);
-                console.log(parsedData);
-                res.redirect('/');
-            } catch (error) {
-                console.error(`Got error: ${error.message}`); 
-                res.redirect('/');    
+            console.log(`Got back status ${response.statusCode}`);
+            if (response.statusCode === 404) {
+                console.error('The requested move action was invalid for this graph.');
+                res.status(404);
+                res.send('The requested move action was invalid for this graph.');
+            } else {
+                try {
+                    const parsedData = JSON.parse(rawData);
+                    console.log(parsedData);
+                    //res.redirect('/');
+                    getGraph().then((graphData) => {
+                        res.send(graphData);
+                    })
+                    .catch((error) => {
+                        console.error(`Got error: ${error.message}`);
+                        res.send(`Got error: ${error.message}`);
+                    });
+                } catch (error) {
+                    console.error(`Got error: ${error.message}`);
+                    //res.redirect('/');
+                    res.status(400);
+                    res.send(`Got error: ${error.message}`);
+                }
             }
         });
     });
-    
+
     req.on('error', (error) => {
-        console.error(`Got error: ${error.message}`);  
-        res.redirect('/');        
+        console.error(`Got error: ${error.message}`);
+        //res.redirect('/');
+        res.status(400);
+        res.send(`Got error: ${error.message}`);
     });
 
     request.write(data);
