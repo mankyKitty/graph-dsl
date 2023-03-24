@@ -10,9 +10,12 @@ nunjucks.configure('views', {
     express: app
 });
 
-function getGraph () {
+// https://github.com/expressjs/express/issues/3226#issuecomment-283979763
+app.use('/static', express.static(__dirname + '/static'))
+
+function getRequest (operation) {
     return new Promise((resolve, reject) => {
-        http.get('http://localhost:8080/getGraph', (response) => {
+        http.get(`http://localhost:8080/${operation}`, (response) => {
             const { statusCode } = response;
 
             let error;
@@ -31,8 +34,9 @@ function getGraph () {
             response.on('data', (chunk) => { rawData += chunk; });
             response.on('end', () => {
                 try {
-                    const parsedData = JSON.parse(rawData);
-                    console.log(parsedData);
+                    /*const parsedData = JSON.parse(rawData);
+                    console.log(parsedData);*/
+                    console.log("The operation completed successfully");
                     resolve(rawData);
                 } catch (error) {
                     console.error(`Got error: ${error.message}`);
@@ -48,7 +52,7 @@ function getGraph () {
 
 app.get('/', (req, res) => {
     console.log('Loading /');
-    getGraph().then((graphData) => {
+    getRequest('getGraph').then((graphData) => {
         res.render('network.njk', { data: graphData });
     })
     .catch((error) => {
@@ -85,10 +89,11 @@ app.get('/move', (req, res) => {
                     res.send('The requested move action was invalid for this graph.');
                 } else {
                     try {
-                        const parsedData = JSON.parse(rawData);
-                        console.log(parsedData);
+                        /*const parsedData = JSON.parse(rawData);
+                        console.log(parsedData);*/
                         //res.redirect('/');
-                        getGraph().then((graphData) => {
+                        console.log("The operation completed successfully");
+                        getRequest('getGraph').then((graphData) => {
                             res.send(graphData);
                         })
                         .catch((error) => {
@@ -105,7 +110,7 @@ app.get('/move', (req, res) => {
             });
         });
 
-        req.on('error', (error) => {
+        request.on('error', (error) => {
             console.error(`Got error: ${error.message}`);
             //res.redirect('/');
             res.status(400);
@@ -148,10 +153,11 @@ app.get('/back', (req, res) => {
                 res.send('The requested move action was invalid for this graph.');
             } else {
                 try {
-                    const parsedData = JSON.parse(rawData);
-                    console.log(parsedData);
+                    /*const parsedData = JSON.parse(rawData);
+                    console.log(parsedData);*/
                     //res.redirect('/');
-                    getGraph().then((graphData) => {
+                    console.log("The operation completed successfully");
+                    getRequest('getGraph').then((graphData) => {
                         res.send(graphData);
                     })
                     .catch((error) => {
@@ -168,7 +174,7 @@ app.get('/back', (req, res) => {
         });
     });
 
-    req.on('error', (error) => {
+    request.on('error', (error) => {
         console.error(`Got error: ${error.message}`);
         //res.redirect('/');
         res.status(400);
@@ -177,6 +183,20 @@ app.get('/back', (req, res) => {
 
     request.write(data);
     request.end();
+});
+
+app.get('/getMetadata', (req, res) => {
+    console.log('Loading /getMetadata');
+    getRequest('getMetadata').then((rawData) => {
+        /*const parsedData = JSON.parse(rawData);
+        console.log(parsedData);*/
+        console.log("The operation completed successfully");
+        res.send(rawData);
+    })
+    .catch((error) => {
+        console.error(`Got error: ${error.message}`);
+        res.send(`Got error: ${error.message}`);
+    });
 });
 
 app.listen(port, () => {
