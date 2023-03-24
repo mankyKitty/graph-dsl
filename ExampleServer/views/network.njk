@@ -183,11 +183,11 @@
                 // Function for handling the result of a metadata request.
                 let metadataRequestHandler = function(err, data) {
                     if (err === 404) {
-                        alert('Could not retrieve metadata:\nThe server did not return any metadata.');
+                        console.error('Could not retrieve metadata:\nThe server did not return any metadata.');
                     } else if (err === 400) {
-                        alert('Could not retrieve metadata:\nThe server encountered an error while trying to send metadata.');
+                        console.error('Could not retrieve metadata:\nThe server encountered an error while trying to send metadata.');
                     } else if (err !== null) {
-                        alert('Could not retrieve metadata:\nHTTP status code was ' + err);
+                        console.error('Could not retrieve metadata:\nHTTP status code was ' + err);
                     } else {
                         for (row of nodeData) {
                             let node = network.body.nodes[row.id];

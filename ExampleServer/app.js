@@ -194,6 +194,7 @@ app.get('/getMetadata', (req, res) => {
         res.send(rawData);
     })
     .catch((error) => {
+        res.status(400);
         console.error(`Got error: ${error.message}`);
         res.send(`Got error: ${error.message}`);
     });
