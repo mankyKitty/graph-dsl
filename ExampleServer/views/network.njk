@@ -16,6 +16,7 @@
         <input id="filterInput" placeholder="Filter targets..."></input>
         <button id="filterButton">Filter</button>
         <button id="autoButton" disabled="disabled">Crp traversal demo</button>
+        <text id="autoText" style="display: none"></text>
         <div id="networkDiv"></div>
 
         <script type="text/javascript">
@@ -32,6 +33,7 @@
             let network = null;
             let currentCursor = null;
             let currentCursorId = null;
+            let metadata = null;
 
             // Function for getting JSON later.
             // https://stackoverflow.com/questions/12460378/how-to-get-json-from-url-in-javascript
@@ -193,11 +195,19 @@
                             let node = network.body.nodes[row.id];
                             node.setOptions({title: getSynonyms(row.label, data).join("\n")});
                         }
+                        metadata = data;
                     }
                 };
 
                 // Try to add metadata to the nodes.
-                getJSON('http://localhost:3000/getMetadata', metadataRequestHandler);
+                if (metadata === null) {
+                    getJSON('http://localhost:3000/getMetadata', metadataRequestHandler);
+                } else {
+                    for (row of nodeData) {
+                        let node = network.body.nodes[row.id];
+                        node.setOptions({title: getSynonyms(row.label, metadata).join("\n")});
+                    }
+                }
 
                 // Clicking on a network node.
                 network.on('click', function(properties) {
@@ -271,6 +281,7 @@
             // Button for demonstrating a traversal with Crp as the starting
             // point.
             autoButton.addEventListener('click', function () {
+                let autoText = document.getElementById('autoText');
 
                 // Don't do anything if a demo is already running (it shouldn't
                 // happen anyway, though).
@@ -287,6 +298,10 @@
                     // Don't turn the auto button back on if we had an error
                     // and aren't at Crp.
                     if (currentCursor === "Crp") autoButton.removeAttribute("disabled");
+
+                    // Hide any status text.
+                    autoText.innerHTML = "";
+                    autoText.setAttribute("style", "display: none");
                 };
 
                 // Function for moving forward.
@@ -323,37 +338,89 @@
                     filterButton.setAttribute("disabled", "disabled");
                     autoButton.setAttribute("disabled", "disabled");
                     demo = true;
+
+                    // Show status text.
+                    autoText.innerHTML = `Moving to Fis (right-most node) in ${interval/1000} seconds...`;
+                    autoText.removeAttribute("style");
+
                     try {
+
+                        // Highlight Fis.
+                        /*setTimeout(function () {
+                            if (demo === false || currentCursorId !== 1) return;
+                            let node = network.body.nodes[0];
+                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
+                        }, interval*0.5);*/
 
                         // Move to Fis.
                         setTimeout(function () {
                             if (demo === false) return;
                             forwardMove(0, 'Fis');
-                        }, interval);
+                            autoText.innerHTML = `Moving to NtrC (top-top-right node) in ${interval/1000} seconds...`;
+                        }, interval*1);
+
+                        // Highlight NtrC.
+                        /*setTimeout(function () {
+                            if (demo === false || currentCursorId !== 0) return;
+                            let node = network.body.nodes[13];
+                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
+                        }, interval*1.5);*/
 
                         // Move to NtrC.
                         setTimeout(function () {
                             if (demo === false) return;
                             forwardMove(13, 'NtrC');
+                            autoText.innerHTML = `Moving to Cbl (left-most node) in ${interval/1000} seconds...`;
                         }, interval*2);
+
+                        // Highlight Cbl.
+                        /*setTimeout(function () {
+                            if (demo === false || currentCursorId !== 13) return;
+                            let node = network.body.nodes[119];
+                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
+                        }, interval*2.5);*/
 
                         // Move to Cbl.
                         setTimeout(function () {
                             if (demo === false) return;
                             forwardMove(119, 'Cbl');
+                            autoText.innerHTML = `Moving back to NtrC (right-most node) in ${interval/1000} seconds...`;
                         }, interval*3);
+
+                        // Highlight NtrC.
+                        /*setTimeout(function () {
+                            if (demo === false || currentCursorId !== 119) return;
+                            let node = network.body.nodes[13];
+                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
+                        }, interval*3.5);*/
 
                         // Move back to NtrC.
                         setTimeout(function () {
                             if (demo === false) return;
                             backwardMove();
+                            autoText.innerHTML = `Moving back to Fis (right-most node) in ${interval/1000} seconds...`;
                         }, interval*4);
+
+                        // Highlight Fis.
+                        /*setTimeout(function () {
+                            if (demo === false || currentCursorId !== 13) return;
+                            let node = network.body.nodes[0];
+                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
+                        }, interval*4.5);*/
 
                         // Move back to Fis.
                         setTimeout(function () {
                             if (demo === false) return;
                             backwardMove();
+                            autoText.innerHTML = `Moving back to Crp (right-most node) in ${interval/1000} seconds...`;
                         }, interval*5);
+
+                        // Highlight Crp.
+                        /*setTimeout(function () {
+                            if (demo === false || currentCursorId !== 0) return;
+                            let node = network.body.nodes[1];
+                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
+                        }, interval*5.5);*/
 
                         // Move back to Crp.
                         setTimeout(function () {
