@@ -7,6 +7,8 @@ open Suave.Filters
 open Suave.Operators
 open Suave.Successful
 open Suave.RequestErrors
+// Added by n7581769.
+open Suave.Writers
 
 open QuikGraph
 open GraphDSL.Zipper
@@ -108,17 +110,36 @@ let getGraphRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) zi
     let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
     OK (Json.serialize { Vertex = (!zipper).Cursor; Edges = Seq.toList edgesMap })
 
+// Added by n7581769.
+//https://stackoverflow.com/questions/44359375/allow-multiple-headers-with-cors-in-suave
+let setCORSHeaders =
+    addHeader  "Access-Control-Allow-Origin" "*" 
+    >=> addHeader "Access-Control-Allow-Headers" "content-type"
+
+// CORS handlers added by n7581769.
 let app g z =
     choose
-      [ POST >=> choose
-          [ path "/move" >=> request (f g z) ]
-        GET >=> choose
-          [ path "/whereami" >=> request (whereami z) ] //]
-        // Added by n7581769.
-        GET >=> choose
-          [ path "/wheretogo" >=> request (connectedRoute g z) ]
-        GET >=> choose
-          [ path "/getGraph" >=> request (getGraphRoute g z) ] ]
+      [ POST >=> fun context ->
+                context |> (
+                    setCORSHeaders
+                    >=> choose
+          [ path "/move" >=> request (f g z) ] )
+        GET >=> fun context ->
+                context |> (
+                    setCORSHeaders
+                    >=> choose
+          [ path "/whereami" >=> request (whereami z) ] ) //] )
+        // Routes added by n7581769.
+        GET >=> fun context ->
+                context |> (
+                    setCORSHeaders
+                    >=> choose
+          [ path "/wheretogo" >=> request (connectedRoute g z) ] )
+        GET >=> fun context ->
+                context |> (
+                    setCORSHeaders
+                    >=> choose
+          [ path "/getGraph" >=> request (getGraphRoute g z) ] ) ]
 
 let addEdgeOrDie (g: AppGraph, e: TaggedEdge<Vert,string>) =
     if g.AddEdge(e) then () else failwith "Failed to add edge"

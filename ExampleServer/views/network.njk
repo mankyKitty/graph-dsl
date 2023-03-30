@@ -74,6 +74,52 @@
                     return [""];
                 }
             }
+            
+            // Function for filtering visible nodes.
+            // Defaults to no filter which shows all nodes in the network.
+            let applyFilter = function(filterText = "") {
+                let edgeUpdates = [];
+                let nodeUpdates = [];
+
+                // If the filter is blank, make everything visible.
+                if (filterText.length < 1) {
+                    for (edgeId in network.body.edges) {
+                        let edge = network.body.edges[edgeId];
+                        if (edge.toId !== edge.fromId) {
+                            edgeUpdates.push({ id: edgeId, hidden: false });
+                        }
+                    }
+                    for (nodeId in network.body.nodes) {
+                        nodeUpdates.push({ id: parseInt(nodeId), hidden: false });
+                    }
+                // Otherwise, find the edges and nodes that should be hidden.
+                } else {
+                    for (edgeId in network.body.edges) {
+                        let edge = network.body.edges[edgeId];
+                        // Ignore this edge if both ends are the same. This should
+                        // only be edges that start and end on the cursor.
+                        if (edge.toId !== edge.fromId) {
+                            // Get the node that's not the cursor.
+                            let nodeId = edge.fromId === currentCursorId ? edge.toId : edge.fromId;
+                            let node = network.body.nodes[nodeId];
+
+                            // Determine if this node (and its edge) should be
+                            // visible or not.
+                            if (node.options.title.includes(filterText)) {
+                                edgeUpdates.push({ id: edgeId, hidden: false });
+                                nodeUpdates.push({ id: nodeId, hidden: false });
+                            } else {
+                                edgeUpdates.push({ id: edgeId, hidden: true });
+                                nodeUpdates.push({ id: nodeId, hidden: true });
+                            }
+                        }
+                    }
+                }
+
+                // Update the network.
+                network.body.data.edges.update(edgeUpdates);
+                network.body.data.nodes.update(nodeUpdates);
+            }
 
             // Function for generating a graph with supplied JSON data.
             let generateGraph = function(sourceData) {
@@ -208,6 +254,14 @@
                         node.setOptions({title: getSynonyms(row.label, metadata).join("\n")});
                     }
                 }
+                
+                // Apply filter if the user has entered a value and this isn't
+                // a demo.
+                if (demo === false) {
+                    let filterInput = document.getElementById('filterInput');
+                    let filterText = filterInput.value;
+                    applyFilter(filterText);                    
+                }
 
                 // Clicking on a network node.
                 network.on('click', function(properties) {
@@ -215,7 +269,6 @@
                     let ids = properties.nodes;
                     let clickedNodes = nodes.get(ids);
                     if (clickedNodes.length > 0) {
-                        //window.location = `http://localhost:3000/move?id=${clickedNodes[0].id}&label=${clickedNodes[0].label}`;
                         network.unselectAll();
                         getJSON(`http://localhost:3000/move?id=${clickedNodes[0].id}&label=${clickedNodes[0].label}`, moveRequestHandler);
                     }
@@ -231,7 +284,6 @@
             // Clicking on the back button.
             backButton.addEventListener('click', function() {
                 if (demo === true) return;
-                //window.location = 'http://localhost:3000/back';
                 getJSON('http://localhost:3000/back', moveRequestHandler);
             });
 
@@ -242,40 +294,7 @@
                 if (demo === true) return;
                 let filterInput = document.getElementById('filterInput');
                 let filterText = filterInput.value;
-
-                // If the filter is blank, make everything visible.
-                if (filterText.length < 1) {
-                    for (edgeId in network.body.edges) {
-                        network.body.edges[edgeId].setOptions({hidden: undefined});
-                    }
-                    for (nodeId in network.body.nodes) {
-                        network.body.nodes[nodeId].setOptions({hidden: undefined});
-                    }
-                // Otherwise, find the edges and nodes that should be hidden.
-                } else {
-                    for (edgeId in network.body.edges) {
-                        edge = network.body.edges[edgeId];
-                        // Ignore this edge if both ends are the same. This should
-                        // only be edges that start and end on the cursor.
-                        if (edge.toId !== edge.fromId) {
-                            // Get the node that's not the cursor.
-                            node = edge.fromId === currentCursorId ? network.body.nodes[edge.toId] : network.body.nodes[edge.fromId];
-
-                            // Determine if this node (and its edge) should be
-                            // visible or not.
-                            if (node.options.title.includes(filterText)) {
-                                edge.setOptions({hidden: undefined});
-                                node.setOptions({hidden: undefined});
-                            } else {
-                                edge.setOptions({hidden: true});
-                                node.setOptions({hidden: true});
-                            }
-                        }
-                    }
-                }
-
-                // Redraw the network.
-                network.redraw();
+                applyFilter(filterText);
             });
 
             // Button for demonstrating a traversal with Crp as the starting
@@ -342,15 +361,11 @@
                     // Show status text.
                     autoText.innerHTML = `Moving to Fis (right-most node) in ${interval/1000} seconds...`;
                     autoText.removeAttribute("style");
+                    
+                    // Clear any current filter.
+                    applyFilter();
 
                     try {
-
-                        // Highlight Fis.
-                        /*setTimeout(function () {
-                            if (demo === false || currentCursorId !== 1) return;
-                            let node = network.body.nodes[0];
-                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
-                        }, interval*0.5);*/
 
                         // Move to Fis.
                         setTimeout(function () {
@@ -359,26 +374,12 @@
                             autoText.innerHTML = `Moving to NtrC (top-top-right node) in ${interval/1000} seconds...`;
                         }, interval*1);
 
-                        // Highlight NtrC.
-                        /*setTimeout(function () {
-                            if (demo === false || currentCursorId !== 0) return;
-                            let node = network.body.nodes[13];
-                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
-                        }, interval*1.5);*/
-
                         // Move to NtrC.
                         setTimeout(function () {
                             if (demo === false) return;
                             forwardMove(13, 'NtrC');
                             autoText.innerHTML = `Moving to Cbl (left-most node) in ${interval/1000} seconds...`;
                         }, interval*2);
-
-                        // Highlight Cbl.
-                        /*setTimeout(function () {
-                            if (demo === false || currentCursorId !== 13) return;
-                            let node = network.body.nodes[119];
-                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
-                        }, interval*2.5);*/
 
                         // Move to Cbl.
                         setTimeout(function () {
@@ -387,13 +388,6 @@
                             autoText.innerHTML = `Moving back to NtrC (right-most node) in ${interval/1000} seconds...`;
                         }, interval*3);
 
-                        // Highlight NtrC.
-                        /*setTimeout(function () {
-                            if (demo === false || currentCursorId !== 119) return;
-                            let node = network.body.nodes[13];
-                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
-                        }, interval*3.5);*/
-
                         // Move back to NtrC.
                         setTimeout(function () {
                             if (demo === false) return;
@@ -401,26 +395,12 @@
                             autoText.innerHTML = `Moving back to Fis (right-most node) in ${interval/1000} seconds...`;
                         }, interval*4);
 
-                        // Highlight Fis.
-                        /*setTimeout(function () {
-                            if (demo === false || currentCursorId !== 13) return;
-                            let node = network.body.nodes[0];
-                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
-                        }, interval*4.5);*/
-
                         // Move back to Fis.
                         setTimeout(function () {
                             if (demo === false) return;
                             backwardMove();
                             autoText.innerHTML = `Moving back to Crp (right-most node) in ${interval/1000} seconds...`;
                         }, interval*5);
-
-                        // Highlight Crp.
-                        /*setTimeout(function () {
-                            if (demo === false || currentCursorId !== 0) return;
-                            let node = network.body.nodes[1];
-                            node.setOptions({shadow: {enabled: true, color: 'green', size: 20, x: 10, y: 10}});
-                        }, interval*5.5);*/
 
                         // Move back to Crp.
                         setTimeout(function () {

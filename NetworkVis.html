@@ -1,0 +1,23 @@
+<html>
+    <head>
+        <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+        <script type="text/javascript" src="NetworkVis.js"></script>
+
+        <style type="text/css">
+            #networkDiv {
+                width: 800px;
+                height: 800px;
+                border: 1px solid lightgray;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>GraphDSL example</h1>
+        <button id="backButton">Back</button>
+        <input id="filterInput" placeholder="Filter targets..."></input>
+        <button id="filterButton">Filter</button>
+        <button id="autoButton" disabled="disabled">Crp traversal demo</button>
+        <text id="autoText" style="display: none"></text>
+        <div id="networkDiv"></div>
+    </body>
+</html>
