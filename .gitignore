@@ -455,6 +455,4 @@ $RECYCLE.BIN/
 
 ## Ignoring some of Sam's additions
 graph-dsl.sln
-ExampleServer/node_modules/*
-ExampleServer/package-lock.json
-ExampleServer/static/scripts/vis-network.min.js
+ExampleServer/*
