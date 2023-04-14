@@ -74,6 +74,52 @@ window.onload = function() {
         }
     }
 
+    // Function for getting all metadata for a TF.
+    let getMetadata = function(name, data) {
+        let row = data.find((item) => item.Name.toLowerCase() === name.toLowerCase());
+        if (row !== undefined) {
+            let lines = [];
+            lines.push(`Identifier: ${row.Id}`);
+            lines.push(`Name: ${row.Name}`);
+            lines.push('Synonyms:');
+            for (text of row.Synonyms) {
+                lines.push(`- ${text}`);
+            }
+            if (row.GeneCoding !== undefined) {
+                lines.push(`Gene Coding: ${row.GeneCoding}`);
+                //lines.push(`Active Conformations: ${row.ActiveConformations}`);
+                //lines.push(`Inactive Conformations: ${row.InactiveConformations}`);
+                //lines.push(`Active Conformations Synonyms: ${row.ActiveConformationsSynonyms}`);
+                //lines.push(`Inactive Conformations Synonyms: ${row.InactiveConformationsSynonyms}`);
+                //lines.push(`Active Conformations Effector Names: ${row.ActiveConformationsEffectorName}`);
+                //lines.push(`Inactive Conformations Effector Names: ${row.InactiveConformationsEffectorName}`);
+                //lines.push(`Active Conformations Effector Synonyms: ${row.ActiveConformationsEffectorSynonyms}`);
+                //lines.push(`Inactive Conformations Effector Synonyms: ${row.InactiveConformationsEffectorSynonyms}`);
+                lines.push(`Symmetry: ${row.Symmetry}`);
+                lines.push(`Family: ${row.Family}`);
+                lines.push(`Connectivity Class: ${row.ConnectivityClass}`);
+                lines.push(`Sensing Class: ${row.SensingClass}`);
+                lines.push('Confirmation Evidence:');
+                for (text of row.ConfirmationEvidence) {
+                    lines.push(`- ${text}`);
+                }
+                lines.push('Additive Evidence:');
+                for (text of row.AdditiveEvidence) {
+                    lines.push(`- ${text}`);
+                }
+                lines.push(`Confidence Level: ${row.ConfidenceLevel}`);
+                lines.push('Comfirmation reference identifiers (PMID):');
+                for (text of row.Pmids) {
+                    lines.push(`- ${text}`);
+                }
+            }
+            return lines.join('\n');
+        } else {
+            return "No metadata available";
+        }
+    }
+
+
     // Function for filtering visible nodes.
     // Defaults to no filter which shows all nodes in the network.
     let applyFilter = function(filterText = "") {
@@ -104,7 +150,8 @@ window.onload = function() {
 
                     // Determine if this node (and its edge) should be
                     // visible or not.
-                    if (node.options.title.includes(filterText)) {
+                    //if (node.options.title !== "No metadata available" && node.options.title.includes(filterText)) {
+                    if (getSynonyms(node.options.label, metadata).join('\n').includes(filterText)) {
                         edgeUpdates.push({ id: edgeId, hidden: false });
                         nodeUpdates.push({ id: nodeId, hidden: false });
                     } else {
@@ -238,7 +285,8 @@ window.onload = function() {
             } else {
                 for (row of nodeData) {
                     let node = network.body.nodes[row.id];
-                    node.setOptions({title: getSynonyms(row.label, data).join("\n")});
+                    //node.setOptions({title: getSynonyms(row.label, data).join("\n")});
+                    node.setOptions({title: getMetadata(row.label, data)});
                 }
                 metadata = data;
             }
@@ -250,7 +298,8 @@ window.onload = function() {
         } else {
             for (row of nodeData) {
                 let node = network.body.nodes[row.id];
-                node.setOptions({title: getSynonyms(row.label, metadata).join("\n")});
+                //node.setOptions({title: getSynonyms(row.label, metadata).join("\n")});
+                node.setOptions({title: getMetadata(row.label, metadata)});
             }
         }
 
