@@ -7,6 +7,7 @@ window.onload = function() {
     let backButton = document.getElementById('backButton');
     let filterButton = document.getElementById('filterButton');
     let autoButton = document.getElementById('autoButton');
+    let historyText = document.getElementById('historyText');
 
     // The current network.
     let network = null;
@@ -20,7 +21,6 @@ window.onload = function() {
         let xhr = new XMLHttpRequest();
         xhr.open('GET', url, true);
         xhr.responseType = 'json';
-        //xhr.setRequestHeader('Access-Control-Allow-Origin', '*');
         xhr.onload = function() {
             let status = xhr.status;
             if (status === 200) {
@@ -38,8 +38,6 @@ window.onload = function() {
         xhr.open('POST', url, true);
         xhr.responseType = 'json';
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        //xhr.setRequestHeader('Content-Length', data.length);
-        //xhr.setRequestHeader('Access-Control-Allow-Origin', 'http://localhost:8080');
         xhr.onload = function() {
             let status = xhr.status;
             if (status === 200) {
@@ -65,18 +63,29 @@ window.onload = function() {
     };
 
     // Function for getting synonyms for a TF.
-    let getSynonyms = function(name, data) {
+    let getSynonyms = function (name, data) {
+
+        // Try to find a row in the metadata that has the supplied name.
         let row = data.find((item) => item.Name.toLowerCase() === name.toLowerCase());
+
+        // Return the list of synonyms if it is found.
         if (row !== undefined) {
             return row.Synonyms;
+
+        // Otherwise return an empty list.
         } else {
             return [""];
         }
     }
 
-    // Function for getting all metadata for a TF.
-    let getMetadata = function(name, data) {
+    // Function for getting all metadata for a TF and putting it into a string
+    // to be displayed in the graph popups.
+    let getMetadataString = function (name, data) {
+
+        // Try to find a row in the metadata that has the supplied name.
         let row = data.find((item) => item.Name.toLowerCase() === name.toLowerCase());
+
+        // Return the metadata to display if it is found.
         if (row !== undefined) {
             let lines = [];
             lines.push(`Identifier: ${row.Id}`);
@@ -114,11 +123,12 @@ window.onload = function() {
                 }
             }
             return lines.join('\n');
+
+        // Otherwise return a placeholder string.
         } else {
             return "No metadata available";
         }
     }
-
 
     // Function for filtering visible nodes.
     // Defaults to no filter which shows all nodes in the network.
@@ -150,7 +160,6 @@ window.onload = function() {
 
                     // Determine if this node (and its edge) should be
                     // visible or not.
-                    //if (node.options.title !== "No metadata available" && node.options.title.includes(filterText)) {
                     if (getSynonyms(node.options.label, metadata).join('\n').includes(filterText)) {
                         edgeUpdates.push({ id: edgeId, hidden: false });
                         nodeUpdates.push({ id: nodeId, hidden: false });
@@ -189,7 +198,12 @@ window.onload = function() {
             document.getElementById('autoButton').setAttribute("disabled", "disabled");
         }
 
-        let nodeData = [{id: currentCursorId, label: sourceData.Vertex.Tag}];
+        // Start collecting the data for nodes.
+        // Create the starting node first from the current cursor position.
+        let nodeData = [{ id: currentCursorId, label: sourceData.Vertex.Tag }];
+
+        // Go through all the edges and add any nodes that aren't in the node
+        // data yet.
         for (edge of sourceData.Edges) {
             if (nodeData.find((item) => item.id === edge.End.Value) === undefined) {
                 nodeData.push({id: edge.End.Value, label: edge.End.Tag});
@@ -202,15 +216,16 @@ window.onload = function() {
         // Create an array for the edge data to use later.
         let edgeData = [];
         for (edge of sourceData.Edges) {
-            let currentEdge = {from: edge.Start.Value, to: edge.End.Value}
-            if (edgeData.find((item) => item.from === currentEdge.from && item.to === currentEdge.to) === undefined) {
-                if (currentEdge.to === sourceData.Vertex.Value) {
-                    currentEdge.color = 'red'
-                } else {
-                    currentEdge.color = 'green'
-                }
-                edgeData.push(currentEdge);
+            let currentEdge = { from: edge.Start.Value, to: edge.End.Value }
+
+            // Colour the edge red if it's pointing to the cursor, otherwise
+            // colour it green.
+            if (currentEdge.to === currentCursorId) {
+                currentEdge.color = 'red'
+            } else {
+                currentEdge.color = 'green'
             }
+            edgeData.push(currentEdge);
         }
 
         // Set up the proper node array for visualisation.
@@ -285,8 +300,7 @@ window.onload = function() {
             } else {
                 for (row of nodeData) {
                     let node = network.body.nodes[row.id];
-                    //node.setOptions({title: getSynonyms(row.label, data).join("\n")});
-                    node.setOptions({title: getMetadata(row.label, data)});
+                    node.setOptions({title: getMetadataString(row.label, data)});
                 }
                 metadata = data;
             }
@@ -298,8 +312,7 @@ window.onload = function() {
         } else {
             for (row of nodeData) {
                 let node = network.body.nodes[row.id];
-                //node.setOptions({title: getSynonyms(row.label, metadata).join("\n")});
-                node.setOptions({title: getMetadata(row.label, metadata)});
+                node.setOptions({title: getMetadataString(row.label, metadata)});
             }
         }
 
@@ -321,6 +334,23 @@ window.onload = function() {
                 postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ToVertex','moveInputs':{'Tag':clickedNodes[0].label,'Value':clickedNodes[0].id}});
             }
         });
+
+        // Display the zipper history if there is any.
+        if (sourceData.History.length > 0) {
+            let entries = [];
+            for (entry of sourceData.History) {
+                let operation = Object.keys(entry)[0];
+                let verticies = entry[operation].map(vertex => `${vertex.Tag} (${vertex.Value})`);
+                if (operation === 'ToVertex') {
+                    entries.push(`Moved from ${verticies[0]} to ${verticies[1]}`);
+                } else {
+                    entries.push(`Unknown move operation; nodes involved are: ${verticies.join(', ')}`);
+                }
+            }
+            historyText.innerHTML = '<li>' + entries.reverse().join('</li><li>') + '</li>';
+        } else {
+            historyText.innerHTML = 'No navigation history.';
+        }
     }
 
     // Function for handling the result of a graph request.

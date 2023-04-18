@@ -49,6 +49,7 @@ type MiniGraph = {
     Edges : MiniJsonEdge list
 }
 
+
 // Data used in a MetadataSearch move request.
 type Query =
     { Property: string
@@ -71,6 +72,20 @@ type ExampleInfo = {
     Id : string;
     Name : string;
     Synonyms : string list;
+}
+
+// MiniGraph type that allows for metadata being sent with it.
+(*type MiniGraphMetadata = {
+    Vertex : Vert
+    Edges : MiniJsonEdge list
+    Metadata : ExampleInfo list
+}*)
+
+// MiniGraph type that allows for zipper history being sent with it.
+type MiniGraphMetadata = {
+    Vertex : Vert
+    Edges : MiniJsonEdge list
+    History : Move<Vert, TaggedEdge<Vert,string>> list
 }
 
 // Added by n7581769.
@@ -208,7 +223,8 @@ let f g z rq =
       |> UTF8.toString
       |> Json.deserialize<MoveOp>
 
-    printfn "[[[[]]]] %s" (moveOp.ToString())
+    // Message changed by n7581769.
+    printfn "Received move operation: %s" (moveOp.ToString())
     let moveRes = match moveOp with
                     | ToVertex vval -> moveToVertex (g, !z, vval)
                     | AlongEdge eege -> moveAlongEdge (g, !z, newEdge(newVert("dummy",-1),newVert("dummy",-2), eege))
@@ -220,7 +236,8 @@ let f g z rq =
                     | MetadataSearchMulti queryList -> findFirstWithMetadataMulti(g, z, queryList)
 
     match moveRes with
-        | None -> NOT_FOUND "damn"
+        // Message changed by n7581769.
+        | None -> NOT_FOUND "No valid node to move to."
         | Some r ->
             z := r
             OK (Json.serialize (!z).Cursor)
@@ -239,10 +256,13 @@ let connectedRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) z
 let getGraphRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) zipper _request =
     printfn "Received getGraph operation."
     let currentVertex = (!zipper).Cursor
-    //let edges = Seq.append (graph.OutEdges((!zipper).Cursor))
     let edges = Seq.filter (fun (item : TaggedEdge<Vert,string>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) graph.Edges
     let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
-    OK (Json.serialize { Vertex = (!zipper).Cursor; Edges = Seq.toList edgesMap })
+    (*let metadataSubset = Seq.filter (fun (item: ExampleInfo) -> 
+        match Seq.tryFind (fun (edge : TaggedEdge<Vert,string>) -> edge.Source.Tag.Equals(item.Name) || edge.Target.Tag.Equals(item.Name)) edges with
+            | Some (row) -> true
+            | None -> false) (GenerateExampleMetadata())*)
+    OK (Json.serialize { Vertex = (!zipper).Cursor; Edges = Seq.toList edgesMap(*; Metadata = Seq.toList metadataSubset*); History = (!zipper).History })
 
 // Added by n7581769.
 //https://stackoverflow.com/questions/44359375/allow-multiple-headers-with-cors-in-suave

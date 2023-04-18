@@ -18,6 +18,12 @@
         <button id="filterButton">Filter</button>
         <button id="autoButton" disabled="disabled">Crp traversal demo</button>
         <text id="autoText" style="display: none"></text>
-        <div id="networkDiv"></div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; grid-gap: 20px;">
+            <div id="networkDiv"></div>
+            <div>
+                <h2>Navigation history:</h2>
+                <ol id="historyText"></ol>
+            </div>
+        </div>
     </body>
 </html>
