@@ -133,24 +133,43 @@ window.onload = function() {
     // Function for filtering visible nodes.
     // Defaults to no filter which shows all nodes in the network.
     let applyFilter = function(filterText = "") {
+
+        // List of updates to push to edges and nodes.
+        // The objects in these arrays will include the edge/node id to change
+        // as well as the options that will be changed for that edge/node. In
+        // this case, it will be the "hidden" option.
         let edgeUpdates = [];
         let nodeUpdates = [];
 
         // If the filter is blank, make everything visible.
         if (filterText.length < 1) {
+
+            // Add an update for each edge in the network.
             for (edgeId in network.body.edges) {
                 let edge = network.body.edges[edgeId];
+
+                // We don't need to worry about any edges that have the same
+                // node on both ends since the only one that can have that is
+                // the regulator, which is always visible.
                 if (edge.toId !== edge.fromId) {
                     edgeUpdates.push({ id: edgeId, hidden: false });
                 }
             }
+
+            // Add an update for each node in the network.
             for (nodeId in network.body.nodes) {
+
+                // We need to use "parseInt" here, as the actual ID is an int
+                // but the key is returned as a string when we iterate.
                 nodeUpdates.push({ id: parseInt(nodeId), hidden: false });
             }
         // Otherwise, find the edges and nodes that should be hidden.
         } else {
+
+            // Go through all edges in the network.
             for (edgeId in network.body.edges) {
                 let edge = network.body.edges[edgeId];
+
                 // Ignore this edge if both ends are the same. This should
                 // only be edges that start and end on the cursor.
                 if (edge.toId !== edge.fromId) {
@@ -160,7 +179,7 @@ window.onload = function() {
 
                     // Determine if this node (and its edge) should be
                     // visible or not.
-                    if (getSynonyms(node.options.label, metadata).join('\n').includes(filterText)) {
+                    if (getSynonyms(node.options.label, metadata).find(synonym => synonym.toLowerCase().includes(filterText.toLowerCase()))) {
                         edgeUpdates.push({ id: edgeId, hidden: false });
                         nodeUpdates.push({ id: nodeId, hidden: false });
                     } else {
@@ -171,15 +190,19 @@ window.onload = function() {
             }
         }
 
-        // Update the network.
+        // Update the network with all the changes.
         network.body.data.edges.update(edgeUpdates);
         network.body.data.nodes.update(nodeUpdates);
     }
 
     // Function for generating a graph with supplied JSON data.
     let generateGraph = function(sourceData) {
+
         // Clear the current network if it exists already.
         if (network !== null) {
+
+            // Destroy the network so we don't have the old nodes and edges
+            // existing outside of the network object.
             network.destroy();
             network = null;
             currentCursor = null;
@@ -200,6 +223,7 @@ window.onload = function() {
 
         // Start collecting the data for nodes.
         // Create the starting node first from the current cursor position.
+        // The basic node object consists of an id and a label.
         let nodeData = [{ id: currentCursorId, label: sourceData.Vertex.Tag }];
 
         // Go through all the edges and add any nodes that aren't in the node
@@ -216,10 +240,15 @@ window.onload = function() {
         // Create an array for the edge data to use later.
         let edgeData = [];
         for (edge of sourceData.Edges) {
+            // The basic edge object consists of an originating node ("from")
+            // and a terminating node ("to"). These should correspond to a node
+            // id.
             let currentEdge = { from: edge.Start.Value, to: edge.End.Value }
 
             // Colour the edge red if it's pointing to the cursor, otherwise
             // colour it green.
+            // When creating node and edge data, options can be defined as
+            // extra properties of the object.
             if (currentEdge.to === currentCursorId) {
                 currentEdge.color = 'red'
             } else {
@@ -237,43 +266,43 @@ window.onload = function() {
         // Select the div element to put the network in.
         let container = document.getElementById('networkDiv');
 
-        // Provide the data in the vis format.
+        // Set up the data object.
         let data = {
             nodes: nodes,
             edges: edges
         };
 
-        // Options for creating the network.
+        // Options for creating the network, that aren't attached to specific
+        // nodes and edges.
         let options = {
             edges: {
-                arrows: 'to',
-                smooth: false
+                arrows: 'to', // Show arrows pointing to the "to" node.
+                smooth: false // Make edges straight lines if possible.
             },
             interaction: {
-                dragNodes: false,
-                navigationButtons: true
+                dragNodes: false, // Disable dragging nodes in the network.
+                navigationButtons: true // Show buttons for altering the view of the network.
             },
             layout: {
-                randomSeed: 9001
+                randomSeed: 9001 // Force a particular seed so that the graph is generated the same each time (though this is not needed as the nodes are manually positioned).
             },
             nodes: {
-                shape: 'ellipse',
-                fixed: true
+                shape: 'ellipse' // Set the node shape.
             },
             physics: {
-                enabled: false
+                enabled: false // Prevent the nodes and edges from automatically moving around to avoid overlaps.
             }
         };
 
         // Initialize your network!
         network = new vis.Network(container, data, options);
-        //network.stabilize(60);
 
-        // Set node positions.
-        // Selected node should be in the centre.
+        // Move the nodes into a "wagon wheel" arrangement.
+        // The cursor node should be in the centre.
         network.moveNode(currentCursorId, 0, 0);
 
-        // Calculate the angle between each target node.
+        // Calculate the angle between each target node, which should be even
+        // between them.
         const angle = (2 * Math.PI) / (nodeData.length - 1)
 
         // Fixed radius for the target nodes.
@@ -298,6 +327,9 @@ window.onload = function() {
             } else if (err !== null) {
                 console.error('Could not retrieve metadata:\nHTTP status code was ' + err);
             } else {
+                // Set the "title" option of each node to the metadata.
+                // This option specifies what is shown when a node is hovered
+                // over.
                 for (row of nodeData) {
                     let node = network.body.nodes[row.id];
                     node.setOptions({title: getMetadataString(row.label, data)});
@@ -310,6 +342,8 @@ window.onload = function() {
         if (metadata === null) {
             getJSON('http://localhost:8080/getMetadata', metadataRequestHandler);
         } else {
+            // Set the "title" option of each node to the metadata.
+            // This option specifies what is shown when a node is hovered over.
             for (row of nodeData) {
                 let node = network.body.nodes[row.id];
                 node.setOptions({title: getMetadataString(row.label, metadata)});
@@ -327,10 +361,24 @@ window.onload = function() {
         // Clicking on a network node.
         network.on('click', function(properties) {
             if (demo === true) return;
+
+            // vis-network provides a properties object to find what elements
+            // were involved in the event. This gives a list of IDs for the
+            // nodes.
             let ids = properties.nodes;
+
+            // Get the node objects involved in the click event.
             let clickedNodes = nodes.get(ids);
+
+            // If there is at least one node clicked on...
             if (clickedNodes.length > 0) {
+
+                // Unselect the nodes as we don't want to show them as
+                // selected.
                 network.unselectAll();
+
+                // Send a request to the server to move to the (first) node
+                // that was clicked on.
                 postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ToVertex','moveInputs':{'Tag':clickedNodes[0].label,'Value':clickedNodes[0].id}});
             }
         });
@@ -338,16 +386,33 @@ window.onload = function() {
         // Display the zipper history if there is any.
         if (sourceData.History.length > 0) {
             let entries = [];
+
+            // Currently, the objects in the zipper's history are "MoveOp"
+            // type in the F# code, so determining what they are takes some
+            // steps.
             for (entry of sourceData.History) {
+
+                // The first key of the object identifies the operation used.
                 let operation = Object.keys(entry)[0];
+
+                // The list for the above property's value contains the
+                // verticies involved in the move operation.
                 let verticies = entry[operation].map(vertex => `${vertex.Tag} (${vertex.Value})`);
-                if (operation === 'ToVertex') {
-                    entries.push(`Moved from ${verticies[0]} to ${verticies[1]}`);
-                } else {
-                    entries.push(`Unknown move operation; nodes involved are: ${verticies.join(', ')}`);
+
+                // For now, check for "ToVertex" only
+                switch (operation) {
+                    case 'ToVertex':
+                        entries.push(`Moved from ${verticies[0]} to ${verticies[1]}`);
+                        break;
+                    default:
+                        entries.push(`Unknown move operation; nodes involved are: ${verticies.join(', ')}`);
                 }
             }
+            
+            // Join all the entries together as HTML list elements.
             historyText.innerHTML = '<li>' + entries.reverse().join('</li><li>') + '</li>';
+            
+        // Display a message if there's no history yet.
         } else {
             historyText.innerHTML = 'No navigation history.';
         }
@@ -421,6 +486,7 @@ window.onload = function() {
                 } else {
                     getJSON('http://localhost:8080/getGraph', graphRequestHandler);
                 }
+            // Create a "ToVertex" MoveOp object to send to the server.
             }, {'moveOp':'ToVertex','moveInputs':{'Tag':label,'Value':id}});
         };
 
@@ -434,6 +500,7 @@ window.onload = function() {
                 } else {
                     getJSON('http://localhost:8080/getGraph', graphRequestHandler);
                 }
+            // Create a "Back" MoveOp object to send to the server.
             }, {'moveOp':'Back','moveInputs':[]});
         };
 
