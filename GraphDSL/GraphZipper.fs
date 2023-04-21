@@ -10,6 +10,7 @@ type Move<'V, 'E> =
     | AlongEdge of 'V * 'E
     | FirstEdgeMatching of 'V * ('E -> bool) * 'E
     | FirstVertexMatching of 'V * ('V -> bool) * 'V
+    | ForceToVertex of 'V * 'V
 
 // The zipper structure itself keeps a reference to the current position The history should probably
 // be nothing but references as well to avoid copying entire sections of the graph but I thought it
@@ -77,4 +78,30 @@ let moveBack (z: Zipper<'V, 'E>) : Zipper<'V, 'E> =
             | AlongEdge (v, _) -> v
             | FirstEdgeMatching (v, _, _) -> v
             | FirstVertexMatching (v, _, _) -> v
+            | ForceToVertex (v, _) -> v
           History = t }
+
+// Added by Samuel Smith n7581769.
+// A helper function to perform a given movement on the graph and record that in the history.
+// This will allow a movement to a non-connected vertex as long as the vertex exists.
+let tryForceMovement
+    (
+        g: BidirectionalGraph<'V, 'E>,
+        z: Zipper<'V, 'E>,
+        v: 'V,
+        cons: ('V -> 'E -> Move<'V, 'E>)
+    ) : Option<Zipper<'V, 'E>> =
+    g.Vertices
+    |> Seq.tryFind (fun vert -> vert = v)
+    |> Option.map (fun next ->
+        { Cursor = next
+        // I've used the first edge in the graph as a dummy edge to use in the
+        // cons function since it expects an edge despite not using it and I'm
+        // not sure how to change it to not need one. :P
+          History = (cons z.Cursor (Seq.first g.Edges).Value) :: z.History })
+
+// Added by Samuel Smith n7581769.
+// From a Vertex, try to move to a specific known vertex.
+// This will allow a movement to a non-connected vertex as long as the vertex exists.
+let forceMoveToVertex (g: BidirectionalGraph<'V, 'E>, z: Zipper<'V, 'E>, v: 'V) : Option<Zipper<'V, 'E>> =
+    tryForceMovement (g, z, v, (fun c n -> ForceToVertex(c, v)))

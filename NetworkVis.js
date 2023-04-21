@@ -377,9 +377,24 @@ window.onload = function() {
                 // selected.
                 network.unselectAll();
 
+                // Get the first clicked node (there usually should only be
+                // one anyway.)
+                let nextNode = clickedNodes[0];
+
+                // We don't need to move if the node is already the cursor.
+                if (nextNode.id === currentCursorId) {
+                    return;
+                }
+
                 // Send a request to the server to move to the (first) node
                 // that was clicked on.
-                postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ToVertex','moveInputs':{'Tag':clickedNodes[0].label,'Value':clickedNodes[0].id}});
+                // Check if the node is one that regulates the current cursor.
+                // If so, a ForceToVertex operation will be used.
+                if (Object.values(network.body.edges).find((edge) => edge.fromId === nextNode.id)) {
+                    postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ForceToVertex','moveInputs':{'Tag':nextNode.label,'Value':nextNode.id}});
+                } else {
+                    postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ToVertex','moveInputs':{'Tag':nextNode.label,'Value':nextNode.id}});
+                }
             }
         });
 
@@ -404,14 +419,17 @@ window.onload = function() {
                     case 'ToVertex':
                         entries.push(`Moved from ${verticies[0]} to ${verticies[1]}`);
                         break;
+                    case 'ForceToVertex':
+                        entries.push(`Jumped from ${verticies[0]} to ${verticies[1]}`);
+                        break;
                     default:
                         entries.push(`Unknown move operation; nodes involved are: ${verticies.join(', ')}`);
                 }
             }
-            
+
             // Join all the entries together as HTML list elements.
             historyText.innerHTML = '<li>' + entries.reverse().join('</li><li>') + '</li>';
-            
+
         // Display a message if there's no history yet.
         } else {
             historyText.innerHTML = 'No navigation history.';

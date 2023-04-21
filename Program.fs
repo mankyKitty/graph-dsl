@@ -7,7 +7,7 @@ open Suave.Filters
 open Suave.Operators
 open Suave.Successful
 open Suave.RequestErrors
-// Added by n7581769.
+// Added by Samuel Smith n7581769.
 open Suave.Writers
 
 open QuikGraph
@@ -28,7 +28,7 @@ type CompOp =
     | ValueLessThan of int
     | ValueGreaterThan of int
 
-// Types added by n7581769.
+// Types added by Samuel Smith n7581769.
 // A record type for storing an edge to be converted to JSON.
 type MiniJsonEdge = {
     Start : Vert
@@ -88,7 +88,7 @@ type MiniGraphMetadata = {
     History : Move<Vert, TaggedEdge<Vert,string>> list
 }
 
-// Added by n7581769.
+// Added by Samuel Smith n7581769.
 // Creates a example set of metadata for the example graph.
 let GenerateExampleMetadata () =
     [{
@@ -117,7 +117,7 @@ let GenerateExampleMetadata () =
         Synonyms = ["The Answer to the Ultimate Question of Life, the Universe, and Everything"; "Forty-two"]
     }]
 
-// Added by n7581769.
+// Added by Samuel Smith n7581769.
 // Checks if the supplied query makes a match in the supplied metadata row.
 let SearchMetadata (row : ExampleInfo) query =
 
@@ -130,7 +130,7 @@ let SearchMetadata (row : ExampleInfo) query =
         | "Synonyms" -> if (not (List.tryFind (fun (item: string) -> item.Contains(query.Value)) row.Synonyms = None)) then true else false
         | _ -> false
 
-// Added by n7581769.
+// Added by Samuel Smith n7581769.
 // Attempts to move to a vertex meeting the specified query conditions.
 // Only accepts a single query that specifies a property to search on and a
 // value that that property contains.
@@ -153,7 +153,7 @@ let findFirstWithMetadata((graph : BidirectionalGraph<Vert, TaggedEdge<Vert,stri
         // Call the movement function for a matching vertex.
         moveAlongFirstMatchingVertex(graph, !zipper, filterQuery)
 
-// Added by n7581769.
+// Added by Samuel Smith n7581769.
 // Attempts to move to a vertex meeting the specified query conditions.
 // Accepts a list of queries (consisting of the property and the value they
 // should contain) and the logical operator to use with those queries.
@@ -200,9 +200,10 @@ type MoveOp =
     | FirstEdge of string   // Move along the first edge matching the given selection options
     | FirstVertex of CompOp // Try to move to the first vertex connected to the current vertex matching the given comparison
     | Back
-    // MoveOps added by n7581769.
+    // MoveOps added by Samuel Smith n7581769.
     | MetadataSearch of Query
     | MetadataSearchMulti of MultiQuery
+    | ForceToVertex of Vert
 
 let newEdge (a: Vert, b: Vert, t: string) : TaggedEdge<Vert, string> =
     new TaggedEdge<Vert, string>(a,b,t)
@@ -223,7 +224,7 @@ let f g z rq =
       |> UTF8.toString
       |> Json.deserialize<MoveOp>
 
-    // Message changed by n7581769.
+    // Message changed by Samuel Smith n7581769.
     printfn "Received move operation: %s" (moveOp.ToString())
     let moveRes = match moveOp with
                     | ToVertex vval -> moveToVertex (g, !z, vval)
@@ -231,12 +232,13 @@ let f g z rq =
                     | FirstEdge s -> moveAlongFirstMatchingEdge(g, !z, (fun ve -> ve.Tag = s))
                     | FirstVertex co -> moveAlongFirstMatchingVertex(g, !z, mkCompOp co)
                     | Back -> Some(moveBack !z)
-                    // MoveOps added by n7581769.
+                    // MoveOps added by Samuel Smith n7581769.
                     | MetadataSearch query -> findFirstWithMetadata(g, z, query)
                     | MetadataSearchMulti queryList -> findFirstWithMetadataMulti(g, z, queryList)
+                    | ForceToVertex vval -> forceMoveToVertex (g, !z, vval)
 
     match moveRes with
-        // Message changed by n7581769.
+        // Message changed by Samuel Smith n7581769.
         | None -> NOT_FOUND "No valid node to move to."
         | Some r ->
             z := r
@@ -244,7 +246,7 @@ let f g z rq =
 
 let whereami z _rq = OK (Json.serialize (!z).Cursor)
 
-// Routes added by n7581769.
+// Routes added by Samuel Smith n7581769.
 // Returns all edges connected to the current vertex.
 let connectedRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) zipper _request =
     //printfn "Received wheretogo operation."
@@ -264,19 +266,19 @@ let getGraphRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) zi
             | None -> false) (GenerateExampleMetadata())*)
     OK (Json.serialize { Vertex = (!zipper).Cursor; Edges = Seq.toList edgesMap(*; Metadata = Seq.toList metadataSubset*); History = (!zipper).History })
 
-// Added by n7581769.
+// Added by Samuel Smith n7581769.
 //https://stackoverflow.com/questions/44359375/allow-multiple-headers-with-cors-in-suave
 let setCORSHeaders =
     addHeader  "Access-Control-Allow-Origin" "*"
     >=> addHeader "Access-Control-Allow-Headers" "content-type"
 
-// Added by n7581769.
+// Added by Samuel Smith n7581769.
 // Returns the graph's metadata.
 let getMetadataRoute _request =
     printfn "Received getMetadata operation."
     OK (Json.serialize (GenerateExampleMetadata()))
 
-// CORS handlers added by n7581769.
+// CORS handlers added by Samuel Smith n7581769.
 let app g z =
     choose
       [ POST >=> fun context ->
@@ -289,7 +291,7 @@ let app g z =
                     setCORSHeaders
                     >=> choose
           [ path "/whereami" >=> request (whereami z) ] ) //] )
-        // Routes added by n7581769.
+        // Routes added by Samuel Smith n7581769.
         GET >=> fun context ->
                 context |> (
                     setCORSHeaders
