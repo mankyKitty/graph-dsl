@@ -125,72 +125,54 @@ let SearchMetadata (row : ExampleInfo) query =
     // value contains the query value. For properties that are a list, check
     // each item in that list.
     match query.Property with
-        | "Id" -> if row.Id.Contains(query.Value) then true else false
-        | "Name" -> if row.Name.Contains(query.Value) then true else false
-        | "Synonyms" -> if (not (List.tryFind (fun (item: string) -> item.Contains(query.Value)) row.Synonyms = None)) then true else false
+        | "Id" -> row.Id.Contains(query.Value)
+        | "Name" -> row.Name.Contains(query.Value)
+        | "Synonyms" -> not (List.tryFind (fun (item: string) -> item.Contains(query.Value)) row.Synonyms = None)
         | _ -> false
+
+let findMatchingMetadataRow (vertex: Vert) mdata =
+  List.tryFind (fun (row : ExampleInfo) -> row.Name.ToLower().Equals(vertex.Tag.ToLower())) mdata
 
 // Added by Samuel Smith n7581769.
 // Attempts to move to a vertex meeting the specified query conditions.
 // Only accepts a single query that specifies a property to search on and a
 // value that that property contains.
 let findFirstWithMetadata((graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>), zipper, (query : Query)) =
-
-        // Get the metadata for the graph.
-        let metadata = GenerateExampleMetadata()
-
-        // Create the function to test for true or false on a vertex.
-        let filterQuery (vertex : Vert) =
-            // First, try to find a matching row in the metadata.
-            match List.tryFind (fun (row : ExampleInfo) ->
-            row.Name.ToLower().Equals(vertex.Tag.ToLower())) metadata with
-            // If a metadata match was found, check the metadata for a query
-            // match.
-            | Some (row) -> SearchMetadata row query
-            // Otherwise return false.
-            | None -> false
-
-        // Call the movement function for a matching vertex.
-        moveAlongFirstMatchingVertex(graph, !zipper, filterQuery)
+    // Get the metadata for the graph.
+    let metadata = GenerateExampleMetadata()
+    // Create the function to test for true or false on a vertex.
+    let filterQuery (vertex : Vert) =
+        // First, try to find a matching row in the metadata.
+        match findMatchingMetadataRow vertex metadata with
+        // If a metadata match was found, check the metadata for a query match.
+        | Some (row) -> SearchMetadata row query
+        // Otherwise return false.
+        | None -> false
+    // Call the movement function for a matching vertex.
+    moveAlongFirstMatchingVertex(graph, !zipper, filterQuery)
 
 // Added by Samuel Smith n7581769.
 // Attempts to move to a vertex meeting the specified query conditions.
 // Accepts a list of queries (consisting of the property and the value they
 // should contain) and the logical operator to use with those queries.
 let findFirstWithMetadataMulti((graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>), zipper, (queryList : MultiQuery)) =
-
-    // If there is less than two queries, or the logical operation given isn't
-    // AND or OR, end the function with None.
-    if (queryList.Queries.Length < 2 || (not (queryList.Operation.Equals(AND)) && not (queryList.Operation.Equals(OR)))) then
-        None
-    else
-
-        // Get the metadata for the graph.
-        let metadata = GenerateExampleMetadata()
-
-        // Create the function to test for true or false on a vertex.
-        let filterQuery (vertex : Vert) =
-            // First, try to find a matching row in the metadata.
-            match List.tryFind (fun (row : ExampleInfo) ->
-            row.Name.ToLower().Equals(vertex.Tag.ToLower())) metadata with
-            // If a metadata match was found, check the metadata for a query
-            // match.
-            | Some (row) ->
-                // Create a list of true/false based on each query and if there
-                // is a match.
-                let matches = List.map (SearchMetadata row) queryList.Queries
-                // If the operation is AND, return true if all queries matched.
-                if (queryList.Operation.Equals(AND) && not (List.contains false matches)) then true
-                // If the operation is OR, return true if at least one query
-                // matched.
-                elif (queryList.Operation.Equals(OR) && List.contains true matches) then true
-                // Otherwise return false.
-                else false
-            // Otherwise return false.
-            | None -> false
-
-        // Call the movement function for a matching vertex.
-        moveAlongFirstMatchingVertex(graph, !zipper, filterQuery)
+    // Get the metadata for the graph.
+    let metadata = GenerateExampleMetadata()
+    // Create the function to test for true or false on a vertex.
+    let filterQuery (vertex : Vert) =
+        // First, try to find a matching row in the metadata.
+        match findMatchingMetadataRow vertex metadata with
+        // If a metadata match was found, check the metadata for a query match.
+        | Some (row) ->
+            // If the operation is AND, return true if all queries matched.
+            // If the operation is OR, return true if at least one query
+            let comp = if queryList.Operation.Equals(AND) then (&&) else (||)
+            (queryList.Operation.Equals(AND), queryList.Queries)
+              ||> List.fold (fun accum v -> comp accum (SearchMetadata row v))
+        // Otherwise return false.
+        | None -> false
+    // Call the movement function for a matching vertex.
+    moveAlongFirstMatchingVertex(graph, !zipper, filterQuery)
 
 // Our boundary types are different to the internal zipper types so there isn't conceptual leakage between the two.
 [<JsonUnion(Mode = UnionMode.CaseKeyAsFieldValue, CaseKeyField="moveOp", CaseValueField="moveInputs")>]
@@ -260,7 +242,7 @@ let getGraphRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) zi
     let currentVertex = (!zipper).Cursor
     let edges = Seq.filter (fun (item : TaggedEdge<Vert,string>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) graph.Edges
     let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
-    (*let metadataSubset = Seq.filter (fun (item: ExampleInfo) -> 
+    (*let metadataSubset = Seq.filter (fun (item: ExampleInfo) ->
         match Seq.tryFind (fun (edge : TaggedEdge<Vert,string>) -> edge.Source.Tag.Equals(item.Name) || edge.Target.Tag.Equals(item.Name)) edges with
             | Some (row) -> true
             | None -> false) (GenerateExampleMetadata())*)

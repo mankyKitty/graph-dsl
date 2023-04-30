@@ -33,7 +33,8 @@ let pEvidenceType: P<EvidenceType> =
 type TFName = TFName of string
 
 let pTFName: P<TFName> =
-    many1Satisfy (fun c -> isAsciiLetter c || "-".Contains(c) || isDigit c) |>> TFName
+    many1Satisfy (fun c -> isAsciiLetter c || "-".Contains(c) || isDigit c)
+    |>> TFName
 
 // An individual Transaction Factor line is composed of the following components.
 
