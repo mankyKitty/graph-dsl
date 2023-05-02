@@ -242,11 +242,7 @@ let getGraphRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) zi
     let currentVertex = (!zipper).Cursor
     let edges = Seq.filter (fun (item : TaggedEdge<Vert,string>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) graph.Edges
     let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
-    (*let metadataSubset = Seq.filter (fun (item: ExampleInfo) ->
-        match Seq.tryFind (fun (edge : TaggedEdge<Vert,string>) -> edge.Source.Tag.Equals(item.Name) || edge.Target.Tag.Equals(item.Name)) edges with
-            | Some (row) -> true
-            | None -> false) (GenerateExampleMetadata())*)
-    OK (Json.serialize { Vertex = (!zipper).Cursor; Edges = Seq.toList edgesMap(*; Metadata = Seq.toList metadataSubset*); History = (!zipper).History })
+    OK (Json.serialize { Vertex = (!zipper).Cursor; Edges = Seq.toList edgesMap; History = (!zipper).History })
 
 // Added by Samuel Smith n7581769.
 //https://stackoverflow.com/questions/44359375/allow-multiple-headers-with-cors-in-suave
@@ -259,6 +255,11 @@ let setCORSHeaders =
 let getMetadataRoute _request =
     printfn "Received getMetadata operation."
     OK (Json.serialize (GenerateExampleMetadata()))
+
+// Returns all the verticies in the current graph.
+let getVerticiesRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) _request =
+    printfn "Received getVerticies operation."
+    OK (Json.serialize (Seq.toList graph.Vertices))
 
 // CORS handlers added by Samuel Smith n7581769.
 let app g z =
@@ -288,7 +289,12 @@ let app g z =
                 context |> (
                     setCORSHeaders
                     >=> choose
-          [ path "/getMetadata" >=> request (getMetadataRoute)] ) ]
+          [ path "/getMetadata" >=> request (getMetadataRoute)] )
+        GET >=> fun context ->
+                context |> (
+                    setCORSHeaders
+                    >=> choose
+          [ path "/getVerticies" >=> request (getVerticiesRoute g) ] ) ]
 
 let addEdgeOrDie (g: AppGraph, e: TaggedEdge<Vert,string>) =
     if g.AddEdge(e) then () else failwith "Failed to add edge"

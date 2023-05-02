@@ -8,12 +8,15 @@ window.onload = function() {
     let filterButton = document.getElementById('filterButton');
     let autoButton = document.getElementById('autoButton');
     let historyText = document.getElementById('historyText');
+    let jumpToSelect = document.getElementById('jumpToSelect');
+    let jumpToButton = document.getElementById('jumpToButton');
 
     // The current network.
     let network = null;
     let currentCursor = null;
     let currentCursorId = null;
     let metadata = null;
+    let allNodes = null;
 
     // GET request for retrieving JSON.
     // https://stackoverflow.com/questions/12460378/how-to-get-json-from-url-in-javascript
@@ -350,6 +353,36 @@ window.onload = function() {
             }
         }
 
+        // Function for handling the result of a all verticies request.
+        let verticiesRequestHandler = function(err, data) {
+            if (err === 404) {
+                console.error('Could not retrieve all graph nodes:\nThe server did not return any graph nodes.');
+            } else if (err === 400) {
+                console.error('Could not retrieve all graph nodes:\nThe server encountered an error while trying to send graph nodes.');
+            } else if (err !== null) {
+                console.error('Could not retrieve all graph nodes:\nHTTP status code was ' + err);
+            } else {
+                // Set the options in the Jump to dropdown.
+                // These are all nodes in the current graph, even if they're
+                // not connected by any chain of nodes to the currently
+                // selected node.
+                let selectOptions = data.map(vertex => `<option value="${vertex.Value}">${vertex.Tag}</option>`);
+                jumpToSelect.innerHTML = selectOptions.join('\n');
+                allNodes = data;
+            }
+        };
+
+        // Try to populate the Jump to node select.
+        if (allNodes === null) {
+            getJSON('http://localhost:8080/getVerticies', verticiesRequestHandler);
+        } else {
+            // Set the options in the Jump to dropdown.
+            // These are all nodes in the current graph, even if they're not
+            // connected by any chain of nodes to the currently selected node.
+            let selectOptions = allNodes.map(vertex => `<option value="${vertex.Value}">${vertex.Tag}</option>`);
+            jumpToSelect.innerHTML = selectOptions.join('\n');
+        }
+
         // Apply filter if the user has entered a value and this isn't
         // a demo.
         if (demo === false) {
@@ -468,6 +501,28 @@ window.onload = function() {
         applyFilter(filterText);
     });
 
+    // Clicking on the Jump to node button.
+    jumpToButton.addEventListener('click', function() {
+        if (demo === true) return;
+
+        // Check if any options are selected in the Jump to dropdown.
+        let selectedNodes = jumpToSelect.selectedOptions;
+
+        // If there's at least one, use the first.
+        if (selectedNodes.length > 0) {
+
+            // Get the tag and the value.
+            let selectedTag = selectedNodes[0].text;
+            // We need to use "parseInt" here, as the actual ID is an int
+            // but the key is returned as a string when we iterate.
+            let selectedValue = parseInt(selectedNodes[0].value);
+
+            // Force move to that vertex.
+            postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ForceToVertex','moveInputs':{'Tag':selectedTag,'Value':selectedValue}});
+        }
+    });
+
+
     // Button for demonstrating a traversal with Crp as the starting
     // point.
     autoButton.addEventListener('click', function () {
@@ -484,6 +539,8 @@ window.onload = function() {
         const resetButtons = function () {
             backButton.removeAttribute("disabled");
             filterButton.removeAttribute("disabled");
+            jumpToSelect.removeAttribute("disabled");
+            jumpToButton.removeAttribute("disabled");
 
             // Don't turn the auto button back on if we had an error
             // and aren't at Crp.
@@ -529,6 +586,8 @@ window.onload = function() {
             backButton.setAttribute("disabled", "disabled");
             filterButton.setAttribute("disabled", "disabled");
             autoButton.setAttribute("disabled", "disabled");
+            jumpToSelect.setAttribute("disabled", "disabled");
+            jumpToButton.setAttribute("disabled", "disabled");
             demo = true;
 
             // Show status text.

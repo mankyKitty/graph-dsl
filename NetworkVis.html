@@ -12,14 +12,31 @@
         </style>
     </head>
     <body>
+        <!-- Header for the network visualisation. -->
         <h1>GraphDSL example</h1>
-        <button id="backButton">Back</button>
+        <!-- Button for going back one place on the zipper. -->
+        <button id="backButton">Back</button>|
+
+        <!-- Text box and button for filtering target nodes. -->
         <input id="filterInput" placeholder="Filter targets..."></input>
-        <button id="filterButton">Filter</button>
+        <button id="filterButton">Filter</button>|
+
+        <!-- Drop down menu and button for jumping to a specific node. -->
+        <select id="jumpToSelect">
+        </select>
+        <button id="jumpToButton">Jump to node</button>|
+
+        <!-- Button and text for an automatic traversal from Crp. -->
         <button id="autoButton" disabled="disabled">Crp traversal demo</button>
         <text id="autoText" style="display: none"></text>
+
+        <!-- Make two columns for the main divs of the page. -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; grid-gap: 20px;">
+
+            <!-- Div for showing the network visualisation. -->
             <div id="networkDiv"></div>
+
+            <!-- Div for showing the navigation history. -->
             <div>
                 <h2>Navigation history:</h2>
                 <ol id="historyText"></ol>
