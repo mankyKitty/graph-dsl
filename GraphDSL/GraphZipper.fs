@@ -95,9 +95,9 @@ let tryForceMovement
     |> Seq.tryFind (fun vert -> vert = v)
     |> Option.map (fun next ->
         { Cursor = next
-        // I've used the first edge in the graph as a dummy edge to use in the
-        // cons function since it expects an edge despite not using it and I'm
-        // not sure how to change it to not need one. :P
+          // I've used the first edge in the graph as a dummy edge to use in the
+          // cons function since it expects an edge despite not using it and I'm
+          // not sure how to change it to not need one. :P
           History = (cons z.Cursor (Seq.first g.Edges).Value) :: z.History })
 
 // Added by Samuel Smith n7581769.
