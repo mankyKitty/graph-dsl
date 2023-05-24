@@ -33,6 +33,10 @@ $ curl -X POST -vvv --data '{"moveOp":"MetadataSearchMulti","moveInputs":{"Opera
 ```
 $ curl -X POST -vvv --data '{"moveOp":"MetadataSearchMulti","moveInputs":{"Operation":"OR","Queries":[{"Property":"Synonyms","Value":"child"},{"Property":"Name","Value":"two"}]}}' http://localhost:8080/move
 ```
+#### NextMostConnected:
+```
+$ curl -X POST -vvv --data '{"moveOp":"NextMostConnected","moveInputs":[]}' http://localhost:8080/move
+```
 
 ### Windows
 #### ToVertex:
@@ -54,4 +58,8 @@ curl -X POST -vvv --data {\"moveOp\":\"MetadataSearchMulti\",\"moveInputs\":{\"O
 #### MetadataSearchMulti (OR):
 ```
 curl -X POST -vvv --data {\"moveOp\":\"MetadataSearchMulti\",\"moveInputs\":{\"Operation\":\"OR\",\"Queries\":[{\"Property\":\"Synonyms\",\"Value\":\"child\"},{\"Property\":\"Name\",\"Value\":\"two\"}]}} http://localhost:8080/move
+```
+#### NextMostConnected
+```
+curl -X POST -vvv --data {\"moveOp\":\"NextMostConnected\",\"moveInputs\":[]} http://localhost:8080/move
 ```

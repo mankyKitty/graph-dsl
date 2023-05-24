@@ -26,9 +26,9 @@
         </select>
         <button id="jumpToButton">Jump to node</button>|
 
-        <!-- Button and text for an automatic traversal from Crp. -->
-        <button id="autoButton" disabled="disabled">Crp traversal demo</button>
-        <text id="autoText" style="display: none"></text>
+        <!-- Button for moving to the connected vertex that has the most
+        connections itself (and we haven't already been to). -->
+        <button id="nextMostConnectedButton">Move to most connected neighbour</button>
 
         <!-- Make two columns for the main divs of the page. -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; grid-gap: 20px;">
@@ -42,5 +42,9 @@
                 <ol id="historyText"></ol>
             </div>
         </div>
+
+        <!-- Button and text for an automatic traversal from Crp. -->
+        <button id="autoButton" disabled="disabled">Crp traversal demo</button>
+        <text id="autoText" style="display: none"></text>
     </body>
 </html>

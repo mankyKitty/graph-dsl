@@ -10,6 +10,7 @@ window.onload = function() {
     let historyText = document.getElementById('historyText');
     let jumpToSelect = document.getElementById('jumpToSelect');
     let jumpToButton = document.getElementById('jumpToButton');
+    let nextMostConnectedButton = document.getElementById('nextMostConnectedButton');
 
     // The current network.
     let network = null;
@@ -220,8 +221,10 @@ window.onload = function() {
         // we're actually on Crp.
         if (currentCursor === "Crp") {
             document.getElementById('autoButton').removeAttribute("disabled");
+            autoButton.setAttribute("style", "display: inherit");
         } else {
             document.getElementById('autoButton').setAttribute("disabled", "disabled");
+            autoButton.setAttribute("style", "display: none");
         }
 
         // Start collecting the data for nodes.
@@ -432,7 +435,7 @@ window.onload = function() {
         });
 
         // Display the zipper history if there is any.
-        if (sourceData.History.length > 0) {
+        if (sourceData.History.length > 1) {
             let entries = [];
 
             // Currently, the objects in the zipper's history are "MoveOp"
@@ -440,28 +443,15 @@ window.onload = function() {
             // steps.
             for (entry of sourceData.History) {
 
-                // The first key of the object identifies the operation used.
-                let operation = Object.keys(entry)[0];
-
-                // The list for the above property's value contains the
-                // verticies involved in the move operation.
-                let verticies = entry[operation].map(vertex => `${vertex.Tag} (${vertex.Value})`);
-
-                // For now, check for "ToVertex" only
-                switch (operation) {
-                    case 'ToVertex':
-                        entries.push(`Moved from ${verticies[0]} to ${verticies[1]}`);
-                        break;
-                    case 'ForceToVertex':
-                        entries.push(`Jumped from ${verticies[0]} to ${verticies[1]}`);
-                        break;
-                    default:
-                        entries.push(`Unknown move operation; nodes involved are: ${verticies.join(', ')}`);
+                // Don't show the last node in the list since that's the current one.
+                if (entry !== sourceData.History[sourceData.History.length - 1]) {
+                    entries.push(`Moved from ${entry.Tag} (${entry.Value}).`);
                 }
             }
 
             // Join all the entries together as HTML list elements.
-            historyText.innerHTML = '<li>' + entries.reverse().join('</li><li>') + '</li>';
+            //historyText.innerHTML = '<li>' + entries.reverse().join('</li><li>') + '</li>';
+            historyText.innerHTML = '<li>' + entries.join('</li><li>') + '</li>';
 
         // Display a message if there's no history yet.
         } else {
@@ -501,7 +491,7 @@ window.onload = function() {
         applyFilter(filterText);
     });
 
-    // Clicking on the Jump to node button.
+    // Clicking on the "Jump to node" button.
     jumpToButton.addEventListener('click', function() {
         if (demo === true) return;
 
@@ -522,6 +512,11 @@ window.onload = function() {
         }
     });
 
+    // Clicking the "Move to most connected neighbour" button.
+    nextMostConnectedButton.addEventListener('click', function() {
+        if (demo === true) return;
+        postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'NextMostConnected','moveInputs':[]});
+    });
 
     // Button for demonstrating a traversal with Crp as the starting
     // point.
@@ -541,10 +536,14 @@ window.onload = function() {
             filterButton.removeAttribute("disabled");
             jumpToSelect.removeAttribute("disabled");
             jumpToButton.removeAttribute("disabled");
+            nextMostConnectedButton.removeAttribute("disabled");
 
             // Don't turn the auto button back on if we had an error
             // and aren't at Crp.
-            if (currentCursor === "Crp") autoButton.removeAttribute("disabled");
+            if (currentCursor === "Crp") {
+                autoButton.removeAttribute("disabled");
+                autoButton.setAttribute("style", "display: inherit");
+            }
 
             // Hide any status text.
             autoText.innerHTML = "";
@@ -588,6 +587,8 @@ window.onload = function() {
             autoButton.setAttribute("disabled", "disabled");
             jumpToSelect.setAttribute("disabled", "disabled");
             jumpToButton.setAttribute("disabled", "disabled");
+            autoButton.setAttribute("style", "display: none");
+            nextMostConnectedButton.setAttribute("disabled", "disabled");
             demo = true;
 
             // Show status text.
