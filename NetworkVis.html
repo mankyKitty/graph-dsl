@@ -9,6 +9,11 @@
                 height: 800px;
                 border: 1px solid lightgray;
             }
+            #overviewDiv {
+                width: 800px;
+                height: 800px;
+                border: 1px solid lightgray;
+            }
         </style>
     </head>
     <body>
@@ -36,15 +41,27 @@
             <!-- Div for showing the network visualisation. -->
             <div id="networkDiv"></div>
 
+            <!-- Div for showing the overview visualisation. -->
+            <div id="overviewDiv"></div>
+        </div>
+        
+        <!-- Another two columns for additional divs. -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; grid-gap: 20px;">
+        
+            <!-- Div for showing additional buttons for the network
+            visualisation. -->
+            <div style="width: 800px;">
+                <!-- Button and text for an automatic traversal from Crp. -->
+                <button id="autoButton" disabled="disabled">Crp traversal demo</button>
+                <text id="autoText" style="display: none"></text>
+            </div>
+
             <!-- Div for showing the navigation history. -->
-            <div>
+            <div style="width: 800px;">
+                <p>Key: <text style="background-color: #FF00FF">Current vertex</text> <text style="background-color: #00FFFF">Connected to current vertex</text> <text style="background-color: #DDDDDD">Not connected to current vertex</text></p>
                 <h2>Navigation history:</h2>
                 <ol id="historyText"></ol>
             </div>
         </div>
-
-        <!-- Button and text for an automatic traversal from Crp. -->
-        <button id="autoButton" disabled="disabled">Crp traversal demo</button>
-        <text id="autoText" style="display: none"></text>
     </body>
 </html>

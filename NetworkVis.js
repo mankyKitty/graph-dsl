@@ -19,6 +19,9 @@ window.onload = function() {
     let metadata = null;
     let allNodes = null;
 
+    // Overview of the whole graph.
+    let overview = null;
+
     // GET request for retrieving JSON.
     // https://stackoverflow.com/questions/12460378/how-to-get-json-from-url-in-javascript
     let getJSON = function(url, callback) {
@@ -197,6 +200,29 @@ window.onload = function() {
         // Update the network with all the changes.
         network.body.data.edges.update(edgeUpdates);
         network.body.data.nodes.update(nodeUpdates);
+    }
+    
+    // Function for recolouring overview nodes based on the current network
+    // view.
+    let recolourOverviewNodes = function() {
+        let nodeUpdates = [];
+        if (currentCursor !== null && currentCursorId !== null) {
+            for (nodeId in overview.body.nodes) {
+                let node = overview.body.nodes[nodeId];
+
+                // If this is the current cursor, colour it magenta.
+                if (node.id === currentCursorId && node.options.label === currentCursor) {
+                    nodeUpdates.push({ id: parseInt(nodeId), color: '#FF00FF' });
+                // If this node is visible in the current network view, colour it aqua.
+                } else if (network.body.nodes[nodeId] !== undefined) {
+                    nodeUpdates.push({ id: parseInt(nodeId), color: '#00FFFF' });
+                // Otherwise, colour it near white.
+                } else {
+                    nodeUpdates.push({ id: parseInt(nodeId), color: '#DDDDDD' });
+                }
+            }
+        }
+        overview.body.data.nodes.update(nodeUpdates);
     }
 
     // Function for generating a graph with supplied JSON data.
@@ -457,6 +483,11 @@ window.onload = function() {
         } else {
             historyText.innerHTML = 'No navigation history.';
         }
+        
+        // Recolour the overview nodes if that visualisation exists.
+        if (overview !== null) {
+            recolourOverviewNodes();
+        }
     }
 
     // Function for handling the result of a graph request.
@@ -651,4 +682,147 @@ window.onload = function() {
             }
         }
     });
+
+    // Function for generating an overview with supplied JSON data.
+    let generateOverview = function(sourceData) {
+
+        // Clear the current overview if it exists already.
+        if (overview !== null) {
+
+            // Destroy the overview so we don't have the old nodes and edges
+            // existing outside of the overview object.
+            overview.destroy();
+            overview = null;
+        }
+
+        // Start collecting the data for nodes.
+        // Go through all the edges and add any nodes that aren't in the node
+        // data yet.
+        let nodeData = [];
+        for (edge of sourceData) {
+            if (nodeData.find((item) => item.id === edge.End.Value) === undefined) {
+                nodeData.push({id: edge.End.Value, label: edge.End.Tag});
+            }
+            if (nodeData.find((item) => item.id === edge.Start.Value) === undefined) {
+                nodeData.push({id: edge.Start.Value, label: edge.Start.Tag});
+            }
+        }
+
+        // Create an array for the edge data to use later.
+        let edgeData = [];
+        for (edge of sourceData) {
+            // The basic edge object consists of an originating node ("from")
+            // and a terminating node ("to"). These should correspond to a node
+            // id.
+            let currentEdge = { from: edge.Start.Value, to: edge.End.Value }
+
+            // Colour the edge red if it's pointing to the cursor, otherwise
+            // colour it green.
+            // When creating node and edge data, options can be defined as
+            // extra properties of the object.
+            if (currentEdge.to === currentCursorId) {
+                currentEdge.color = 'red'
+            } else {
+                currentEdge.color = 'green'
+            }
+            edgeData.push(currentEdge);
+        }
+
+        // Set up the proper node array for visualisation.
+        let nodes = new vis.DataSet(nodeData);
+
+        // Set up the proper edge array for visualisation.
+        let edges = new vis.DataSet(edgeData);
+
+        // Select the div element to put the network in.
+        let container = document.getElementById('overviewDiv');
+
+        // Set up the data object.
+        let data = {
+            nodes: nodes,
+            edges: edges
+        };
+
+        // Options for creating the network, that aren't attached to specific
+        // nodes and edges.
+        let options = {
+            edges: {
+                arrows: 'to', // Show arrows pointing to the "to" node.
+                smooth: false // Make edges straight lines if possible.
+            },
+            interaction: {
+                dragNodes: false, // Disable dragging nodes in the network.
+                navigationButtons: true // Show buttons for altering the view of the network.
+            },
+            layout: {
+                randomSeed: 9001 // Force a particular seed so that the graph is generated the same each time (though this is not needed as the nodes are manually positioned).
+            },
+            nodes: {
+                shape: 'ellipse', // Set the node shape.
+                color: '#DDDDDD' // Set the node colour to near white.
+            },
+            physics: {
+                enabled: false // Prevent the nodes and edges from automatically moving around to avoid overlaps.
+            }
+        };
+
+        // Initialize your network!
+        overview = new vis.Network(container, data, options);
+        overview.stabilize(60);
+
+        // Clicking on a overview node.
+        overview.on('click', function(properties) {
+            if (demo === true) return;
+
+            // vis-network provides a properties object to find what elements
+            // were involved in the event. This gives a list of IDs for the
+            // nodes.
+            let ids = properties.nodes;
+
+            // Get the node objects involved in the click event.
+            let clickedNodes = nodes.get(ids);
+
+            // If there is at least one node clicked on...
+            if (clickedNodes.length > 0) {
+
+                // Unselect the nodes as we don't want to show them as
+                // selected.
+                overview.unselectAll();
+
+                // Get the first clicked node (there usually should only be
+                // one anyway.)
+                let nextNode = clickedNodes[0];
+
+                // We don't need to move if the node is already the cursor.
+                if (nextNode.id === currentCursorId) {
+                    return;
+                }
+
+                // Send a request to the server to move to the (first) node
+                // that was clicked on.
+                // Always do a force move since we don't care whether there's a
+                // connection on the graph between current and new node.
+                postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ForceToVertex','moveInputs':{'Tag':nextNode.label,'Value':nextNode.id}});
+            }
+        });
+
+        // Recolour the current zipper cursor.
+        recolourOverviewNodes();
+    }
+
+    // Function for handling the result of a graph request.
+    let overviewRequestHandler = function(err, data) {
+        if (err === 404) {
+            console.error('Could not retrieve all graph edges:\nThe server did not return any data.');
+        } else if (err === 400) {
+            console.error('Could not retrieve all graph edges:\nThe server encountered an error while trying to send data.');
+        } else if (err !== null) {
+            console.error('Could not retrieve all graph edges:\nHTTP status code was ' + err);
+        } else {
+            generateOverview(data);
+        }
+    };
+
+    // Call server for the edges JSON.
+    getJSON('http://localhost:8080/getEdges', overviewRequestHandler);
 };

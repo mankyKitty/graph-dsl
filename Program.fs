@@ -298,9 +298,15 @@ let getMetadataRoute _request =
     OK (Json.serialize (GenerateExampleMetadata()))
 
 // Returns all the verticies in the current graph.
-let getVerticiesRoute (graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) _request =
+let getVerticiesRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) _request =
     printfn "Received getVerticies operation."
-    OK (Json.serialize (Seq.toList graph.Vertices))
+    OK (Json.serialize (Seq.toList g.Vertices))
+
+// Returns all the edges in the current graph.
+let getEdgesRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) _request =
+    printfn "Received getEdges operation."
+    let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) g.Edges
+    OK (Json.serialize (Seq.toList edgesMap))
 
 // CORS handlers and vertex history added by Samuel Smith n7581769.
 let app g z (vh : Vert list ref) =
@@ -335,7 +341,12 @@ let app g z (vh : Vert list ref) =
                 context |> (
                     setCORSHeaders
                     >=> choose
-          [ path "/getVerticies" >=> request (getVerticiesRoute g) ] ) ]
+          [ path "/getVerticies" >=> request (getVerticiesRoute g) ] )
+        GET >=> fun context ->
+                context |> (
+                    setCORSHeaders
+                    >=> choose
+          [ path "/getEdges" >=> request (getEdgesRoute g) ] ) ]
 
 let addEdgeOrDie (g: AppGraph, e: TaggedEdge<Vert,string>) =
     if g.AddEdge(e) then () else failwith "Failed to add edge"
