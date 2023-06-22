@@ -85,7 +85,8 @@ type ExampleInfo = {
 type MiniGraphMetadata = {
     Vertex : Vert
     Edges : MiniJsonEdge list
-    History : (*Move<Vert, TaggedEdge<Vert,string>> list*) Vert list
+    History : Vert list
+    HistoryIndex : int
 }
 
 // Added by Samuel Smith n7581769.
@@ -187,6 +188,7 @@ type MoveOp =
     | MetadataSearchMulti of MultiQuery
     | ForceToVertex of Vert
     | NextMostConnected
+    | Forward
 
 let newEdge (a: Vert, b: Vert, t: string) : TaggedEdge<Vert, string> =
     new TaggedEdge<Vert, string>(a,b,t)
@@ -203,24 +205,24 @@ let mkCompOp (c: CompOp): (Vert -> bool) =
 
 // Added by Samuel Smith n7581769.
 // Attempts to move to the connected vertex that has the most outgoing
-// connections 
-let findNextMostConnected((graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>), zipper, (vertHistory : seq<Vert>)) =
+// connections
+let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>), z) =
 
     // Sort the list of verticies connected to the current vertex by how many
     // connections they have.
-    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedEdge<Vert,string>) -> Seq.length (graph.OutEdges(edge.Target))) (graph.OutEdges((!zipper).Cursor))
+    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedEdge<Vert,string>) -> Seq.length (g.OutEdges(edge.Target))) (g.OutEdges((!z).Cursor))
     let sortedVerticies = Seq.distinct (Seq.map (fun (edge : TaggedEdge<Vert,string>) -> edge.Target) sortedEdges)
     #if DEBUG
-    Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has %i targets" vertex.Tag (Seq.length (graph.OutEdges(vertex)))) sortedVerticies
-    Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) vertHistory
+    Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has %i targets" vertex.Tag (Seq.length (g.OutEdges(vertex)))) sortedVerticies
+    Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((!z).HistoryIndex + 1) (!z).VertHistory)
     #endif
 
     let checkInHistory (vertex : Vert) =
-        match Seq.tryFind(fun historyVert -> vertex.Equals(historyVert)) vertHistory with
+        match Seq.tryFind(fun historyVert -> vertex.Equals(historyVert)) (last ((!z).HistoryIndex + 1) (!z).VertHistory) with
         | Some (result) -> true
         | None -> false
 
-    let targetVert =        
+    let targetVert =
         // Find a vertex that's not already in the history.
         match Seq.tryFind (fun (sortedVert : Vert) -> not (checkInHistory sortedVert)) sortedVerticies with
         | Some (result) -> result
@@ -231,10 +233,9 @@ let findNextMostConnected((graph : BidirectionalGraph<Vert, TaggedEdge<Vert,stri
         vertex.Equals(targetVert)
 
     // Call the movement function for a matching vertex.
-    moveAlongFirstMatchingVertex(graph, !zipper, filterQuery)
+    moveAlongFirstMatchingVertex(g, !z, filterQuery)
 
-// Vertex history added by Samuel Smith n7581769.
-let f g z (vh : Vert list ref) rq =
+let f g z rq =
     let moveOp =
       rq.rawForm
       |> UTF8.toString
@@ -252,19 +253,14 @@ let f g z (vh : Vert list ref) rq =
                     | MetadataSearch query -> findFirstWithMetadata(g, z, query)
                     | MetadataSearchMulti queryList -> findFirstWithMetadataMulti(g, z, queryList)
                     | ForceToVertex vval -> forceMoveToVertex (g, !z, vval)
-                    | NextMostConnected -> findNextMostConnected (g, z, !vh)
+                    | NextMostConnected -> findNextMostConnected (g, z)
+                    | Forward -> Some(moveForward !z)
 
     match moveRes with
         // Message changed by Samuel Smith n7581769.
         | None -> NOT_FOUND "No valid node to move to."
         | Some r ->
             z := r
-            // Added by Samuel Smith n7581769.
-            match moveOp with
-            // Remove the last entry in the history if we went back.
-            | Back -> vh := List.removeAt (Seq.length (!vh)) (!vh)
-            // Otherwise add a new entry.
-            | _ -> vh := List.insertAt (Seq.length (!vh)) (!z).Cursor (!vh)
             OK (Json.serialize (!z).Cursor)
 
 let whereami z _rq = OK (Json.serialize (!z).Cursor)
@@ -278,12 +274,12 @@ let connectedRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) z _re
     OK (Json.serialize { Edges = Seq.toList edgesMap })
 
 // Returns the current vertex and all edges connected to it.
-let getGraphRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) z (vh : Vert list ref) _request =
+let getGraphRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) z _request =
     printfn "Received getGraph operation."
     let currentVertex = (!z).Cursor
     let edges = Seq.filter (fun (item : TaggedEdge<Vert,string>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) g.Edges
     let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
-    OK (Json.serialize { Vertex = (!z).Cursor; Edges = Seq.toList edgesMap(*; History = (!z).History*); History = !vh })
+    OK (Json.serialize { Vertex = (!z).Cursor; Edges = Seq.toList edgesMap; History = (!z).VertHistory; HistoryIndex = (!z).HistoryIndex })
 
 // Added by Samuel Smith n7581769.
 //https://stackoverflow.com/questions/44359375/allow-multiple-headers-with-cors-in-suave
@@ -308,14 +304,14 @@ let getEdgesRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) _reque
     let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) g.Edges
     OK (Json.serialize (Seq.toList edgesMap))
 
-// CORS handlers and vertex history added by Samuel Smith n7581769.
-let app g z (vh : Vert list ref) =
+// CORS handlers added by Samuel Smith n7581769.
+let app g z =
     choose
       [ POST >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
-          [ path "/move" >=> request (f g z vh) ] )
+          [ path "/move" >=> request (f g z) ] )
         GET >=> fun context ->
                 context |> (
                     setCORSHeaders
@@ -331,7 +327,7 @@ let app g z (vh : Vert list ref) =
                 context |> (
                     setCORSHeaders
                     >=> choose
-          [ path "/getGraph" >=> request (getGraphRoute g z vh) ] )
+          [ path "/getGraph" >=> request (getGraphRoute g z) ] )
         GET >=> fun context ->
                 context |> (
                     setCORSHeaders
@@ -390,6 +386,8 @@ let generateFreshGraph: AppGraph =
 // $ curl -X POST -vvv --data '{"moveOp":"MetadataSearchMulti","moveInputs":{"Operation":"AND","Queries":[{"Property":"Synonyms","Value":"child"},{"Property":"Name","Value":"two"}]}}' http://localhost:8080/move
 // MetadataSearchMulti (OR):
 // $ curl -X POST -vvv --data '{"moveOp":"MetadataSearchMulti","moveInputs":{"Operation":"OR","Queries":[{"Property":"Synonyms","Value":"child"},{"Property":"Name","Value":"two"}]}}' http://localhost:8080/move
+// Forward:
+// $ curl -X POST -vvv --data '{"moveOp":"Forward","moveInputs":[]}' http://localhost:8080/move
 
 // Example curl commands (Windows):
 // ToVertex:
@@ -404,6 +402,8 @@ let generateFreshGraph: AppGraph =
 // curl -X POST -vvv --data {\"moveOp\":\"MetadataSearchMulti\",\"moveInputs\":{\"Operation\":\"OR\",\"Queries\":[{\"Property\":\"Synonyms\",\"Value\":\"child\"},{\"Property\":\"Name\",\"Value\":\"two\"}]}} http://localhost:8080/move
 // NextMostConnected:
 // curl -X POST -vvv --data {\"moveOp\":\"NextMostConnected\",\"moveInputs\":[]} http://localhost:8080/move
+// Forward:
+// curl -X POST -vvv --data {\"moveOp\":\"Forward\",\"moveInputs\":[]} http://localhost:8080/move
 [<EntryPoint>]
 let main argv =
     let mutable g = generateFreshGraph
@@ -411,10 +411,5 @@ let main argv =
     let root = newVert("zero", 0)
     printfn "Root JSON: %s" (Json.serialize root)
     let mutable freshZip = ref (createZipper root)
-    // Added by Samuel Smith n7581769.
-    // Keeps track of previously visited verticies. Searching the actual
-    // history property of the zipper appears non-trival so for now, I will use
-    // this solution.
-    let mutable vertHistory = ref [root]
-    startWebServer defaultConfig (app g freshZip vertHistory)
+    startWebServer defaultConfig (app g freshZip)
     0

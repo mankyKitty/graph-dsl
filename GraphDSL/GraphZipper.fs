@@ -17,9 +17,23 @@ type Move<'V, 'E> =
 // might obscure the overall intent.
 type Zipper<'V, 'E> =
     { Cursor: 'V
-      History: list<Move<'V, 'E>> }
+      History: list<Move<'V, 'E>>
+// Added by Samuel Smith n7581769.
+// A list of verticies that have been visited (to enable checking what's been
+// visited easily).
+      VertHistory: list<'V>
+// The current position in the history we're at. Used to enable going back
+// without clearing the history.
+      HistoryIndex: int }
+
+// Added by Samuel Smith n7581769.
+// Helper function to get last N elements of a list.
+// https://stackoverflow.com/questions/18670134/how-can-i-take-last-n-items-from-a-list-in-f
+let last n xs = List.toSeq xs |> Seq.skip (xs.Length - n) |> Seq.toList
 
 // A helper function to perform a given movement on the graph and record that in the history.
+// Modified by Samuel Smith n7581769: If not at the end of the history, any
+// history past the current point is removed.
 let tryMovement
     (
         g: BidirectionalGraph<'V, 'E>,
@@ -31,10 +45,12 @@ let tryMovement
     |> Seq.tryFind fn
     |> Option.map (fun next ->
         { Cursor = next.Target
-          History = (cons z.Cursor next) :: z.History })
+          History = (cons z.Cursor next) :: last z.HistoryIndex z.History
+          VertHistory = next.Target :: last (z.HistoryIndex + 1) z.VertHistory
+          HistoryIndex = z.HistoryIndex + 1 })
 
 // Create the zipper from the given starting point
-let createZipper (a: 'V) : Zipper<'V, 'E> = { Cursor = a; History = [] }
+let createZipper (a: 'V) : Zipper<'V, 'E> = { Cursor = a; History = []; VertHistory = [a]; HistoryIndex = 0 }
 
 // From a Vertex, try to move to a specific known vertex that is expected to be connected to this one.
 let moveToVertex (g: BidirectionalGraph<'V, 'E>, z: Zipper<'V, 'E>, v: 'V) : Option<Zipper<'V, 'E>> =
@@ -67,9 +83,33 @@ let moveAlongFirstMatchingVertex
     ) : Option<Zipper<'V, 'E>> =
     tryMovement (g, z, (fun e -> f (e.Target)), (fun c n -> FirstVertexMatching(c, f, n.Target)))
 
-// Move one step "back". This reverts the most recent single step.
+// Added by Samuel Smith n7581769.
+// Move to an arbitrary point in the history.
+// If given a integer higher than the number of history entries, defaults to
+// the last history item, and defaults to the starting vertex if given a
+// negative integer.
+let moveToHistoryIndex (z: Zipper<'V, 'E>) i : Zipper<'V, 'E> =
+    // Thanks to the vertex list, we can just jump to the vertex directly - no
+    // need to interpret the move history list.
+    let newZ =
+        if (i > z.VertHistory.Length - 1) then
+                { Cursor = List.item (0) z.VertHistory;
+                History = z.History;
+                VertHistory = z.VertHistory;
+                HistoryIndex = (z.VertHistory.Length - 1)}
+        else
+                { Cursor = List.item ((z.VertHistory.Length - 1) - (max 0 i)) z.VertHistory;
+                History = z.History;
+                VertHistory = z.VertHistory;
+                HistoryIndex = (max 0 i)}
+    newZ
+
+// Move one step "back" in the history.
+// Modified by Samuel Smith n7581769: The history is not erased when moving
+// back. Also uses the new moveToHistoryIndex function instead of a complex
+// match in the movement history.
 let moveBack (z: Zipper<'V, 'E>) : Zipper<'V, 'E> =
-    match z.History with
+    (*match last (max 0 z.HistoryIndex) z.History with
     | [] -> z
     | h :: t ->
         { Cursor =
@@ -79,11 +119,19 @@ let moveBack (z: Zipper<'V, 'E>) : Zipper<'V, 'E> =
             | FirstEdgeMatching (v, _, _) -> v
             | FirstVertexMatching (v, _, _) -> v
             | ForceToVertex (v, _) -> v
-          History = t }
+          History = z.History
+          VertHistory = z.VertHistory
+          HistoryIndex = z.HistoryIndex - 1}*)
+    moveToHistoryIndex z (z.HistoryIndex - 1)
+
 
 // Added by Samuel Smith n7581769.
-// A helper function to perform a given movement on the graph and record that in the history.
-// This will allow a movement to a non-connected vertex as long as the vertex exists.
+// A helper function to perform a given movement on the graph and record that
+// in the history.
+// This will allow a movement to a non-connected vertex as long as the vertex
+// exists.
+// If not at the end of the history, any history past the current point is
+// removed.
 let tryForceMovement
     (
         g: BidirectionalGraph<'V, 'E>,
@@ -98,10 +146,19 @@ let tryForceMovement
           // I've used the first edge in the graph as a dummy edge to use in the
           // cons function since it expects an edge despite not using it and I'm
           // not sure how to change it to not need one. :P
-          History = (cons z.Cursor (Seq.first g.Edges).Value) :: z.History })
+          History = (cons z.Cursor (Seq.first g.Edges).Value) :: last z.HistoryIndex z.History
+          VertHistory = next :: last (z.HistoryIndex + 1) z.VertHistory
+          HistoryIndex = z.HistoryIndex + 1 })
 
 // Added by Samuel Smith n7581769.
 // From a Vertex, try to move to a specific known vertex.
 // This will allow a movement to a non-connected vertex as long as the vertex exists.
 let forceMoveToVertex (g: BidirectionalGraph<'V, 'E>, z: Zipper<'V, 'E>, v: 'V) : Option<Zipper<'V, 'E>> =
     tryForceMovement (g, z, v, (fun c n -> ForceToVertex(c, v)))
+
+// Added by Samuel Smith n7581769.
+// Move one step forward in the history.
+// Essentially uses the above function to move one higher than the current
+// history index.
+let moveForward (z: Zipper<'V, 'E>) : Zipper<'V, 'E> =
+    moveToHistoryIndex z (z.HistoryIndex + 1)

@@ -11,16 +11,18 @@ window.onload = function() {
     let jumpToSelect = document.getElementById('jumpToSelect');
     let jumpToButton = document.getElementById('jumpToButton');
     let nextMostConnectedButton = document.getElementById('nextMostConnectedButton');
+    let historyStatus = document.getElementById('historyStatus');
+    let forwardButton = document.getElementById('forwardButton');
 
     // The current network.
-    let network = null;
+    let mainNetwork = null;
     let currentCursor = null;
     let currentCursorId = null;
     let metadata = null;
-    let allNodes = null;
+    let dropdownVerticies = null;
 
     // Overview of the whole graph.
-    let overview = null;
+    let overviewNetwork = null;
 
     // GET request for retrieving JSON.
     // https://stackoverflow.com/questions/12460378/how-to-get-json-from-url-in-javascript
@@ -138,7 +140,7 @@ window.onload = function() {
     }
 
     // Function for filtering visible nodes.
-    // Defaults to no filter which shows all nodes in the network.
+    // Defaults to no filter which shows all nodes in the main network.
     let applyFilter = function(filterText = "") {
 
         // List of updates to push to edges and nodes.
@@ -151,9 +153,9 @@ window.onload = function() {
         // If the filter is blank, make everything visible.
         if (filterText.length < 1) {
 
-            // Add an update for each edge in the network.
-            for (edgeId in network.body.edges) {
-                let edge = network.body.edges[edgeId];
+            // Add an update for each edge in the main network.
+            for (edgeId in mainNetwork.body.edges) {
+                let edge = mainNetwork.body.edges[edgeId];
 
                 // We don't need to worry about any edges that have the same
                 // node on both ends since the only one that can have that is
@@ -163,8 +165,8 @@ window.onload = function() {
                 }
             }
 
-            // Add an update for each node in the network.
-            for (nodeId in network.body.nodes) {
+            // Add an update for each node in the main network.
+            for (nodeId in mainNetwork.body.nodes) {
 
                 // We need to use "parseInt" here, as the actual ID is an int
                 // but the key is returned as a string when we iterate.
@@ -173,16 +175,16 @@ window.onload = function() {
         // Otherwise, find the edges and nodes that should be hidden.
         } else {
 
-            // Go through all edges in the network.
-            for (edgeId in network.body.edges) {
-                let edge = network.body.edges[edgeId];
+            // Go through all edges in the main network.
+            for (edgeId in mainNetwork.body.edges) {
+                let edge = mainNetwork.body.edges[edgeId];
 
                 // Ignore this edge if both ends are the same. This should
                 // only be edges that start and end on the cursor.
                 if (edge.toId !== edge.fromId) {
                     // Get the node that's not the cursor.
                     let nodeId = edge.fromId === currentCursorId ? edge.toId : edge.fromId;
-                    let node = network.body.nodes[nodeId];
+                    let node = mainNetwork.body.nodes[nodeId];
 
                     // Determine if this node (and its edge) should be
                     // visible or not.
@@ -197,44 +199,64 @@ window.onload = function() {
             }
         }
 
-        // Update the network with all the changes.
-        network.body.data.edges.update(edgeUpdates);
-        network.body.data.nodes.update(nodeUpdates);
+        // Update the main network with all the changes.
+        mainNetwork.body.data.edges.update(edgeUpdates);
+        mainNetwork.body.data.nodes.update(nodeUpdates);
     }
-    
-    // Function for recolouring overview nodes based on the current network
-    // view.
+
+    // Function for handling the result of a all verticies request.
+    let verticiesRequestHandler = function(err, data) {
+        if (err === 404) {
+            console.error('Could not retrieve all graph nodes:\nThe server did not return any graph nodes.');
+        } else if (err === 400) {
+            console.error('Could not retrieve all graph nodes:\nThe server encountered an error while trying to send graph nodes.');
+        } else if (err !== null) {
+            console.error('Could not retrieve all graph nodes:\nHTTP status code was ' + err);
+        } else {
+            // Set the options in the Jump to dropdown.
+            // These are all nodes in the current graph, even if they're not
+            // connected by any chain of nodes to the currently selected node.
+            let selectOptions = data.map(vertex => `<option value="${vertex.Value}">${vertex.Tag}</option>`);
+            jumpToSelect.innerHTML = selectOptions.join('\n');
+            dropdownVerticies = data;
+        }
+    };
+
+    // Function for recolouring the overview network nodes based on the current
+    // main network view.
     let recolourOverviewNodes = function() {
         let nodeUpdates = [];
         if (currentCursor !== null && currentCursorId !== null) {
-            for (nodeId in overview.body.nodes) {
-                let node = overview.body.nodes[nodeId];
+            for (nodeId in overviewNetwork.body.nodes) {
+                let node = overviewNetwork.body.nodes[nodeId];
 
                 // If this is the current cursor, colour it magenta.
                 if (node.id === currentCursorId && node.options.label === currentCursor) {
                     nodeUpdates.push({ id: parseInt(nodeId), color: '#FF00FF' });
-                // If this node is visible in the current network view, colour it aqua.
-                } else if (network.body.nodes[nodeId] !== undefined) {
+                // If this node is visible in the current main network view,
+                // colour it aqua.
+                } else if (mainNetwork.body.nodes[nodeId] !== undefined) {
                     nodeUpdates.push({ id: parseInt(nodeId), color: '#00FFFF' });
-                // Otherwise, colour it near white.
+                // Otherwise, colour it light gray.
                 } else {
                     nodeUpdates.push({ id: parseInt(nodeId), color: '#DDDDDD' });
                 }
             }
         }
-        overview.body.data.nodes.update(nodeUpdates);
+        overviewNetwork.body.data.nodes.update(nodeUpdates);
     }
 
-    // Function for generating a graph with supplied JSON data.
+    // Function for generating a graph for the main network view with supplied
+    // JSON data.
     let generateGraph = function(sourceData) {
 
-        // Clear the current network if it exists already.
-        if (network !== null) {
+        // Clear the current main network if it exists already.
+        if (mainNetwork !== null) {
 
-            // Destroy the network so we don't have the old nodes and edges
-            // existing outside of the network object.
-            network.destroy();
-            network = null;
+            // Destroy the existing network data so we don't have the old
+            // nodes and edges existing outside of the main network object.
+            mainNetwork.destroy();
+            mainNetwork = null;
             currentCursor = null;
             currentCursorId = null;
         }
@@ -295,8 +317,8 @@ window.onload = function() {
         // Set up the proper edge array for visualisation.
         let edges = new vis.DataSet(edgeData);
 
-        // Select the div element to put the network in.
-        let container = document.getElementById('networkDiv');
+        // Select the div element to put the main network in.
+        let container = document.getElementById('mainNetworkDiv');
 
         // Set up the data object.
         let data = {
@@ -327,11 +349,11 @@ window.onload = function() {
         };
 
         // Initialize your network!
-        network = new vis.Network(container, data, options);
+        mainNetwork = new vis.Network(container, data, options);
 
         // Move the nodes into a "wagon wheel" arrangement.
         // The cursor node should be in the centre.
-        network.moveNode(currentCursorId, 0, 0);
+        mainNetwork.moveNode(currentCursorId, 0, 0);
 
         // Calculate the angle between each target node, which should be even
         // between them.
@@ -345,13 +367,23 @@ window.onload = function() {
         let counter = 0;
         for (row of nodeData) {
             if (row.id !== currentCursorId) {
-                network.moveNode(row.id, radius * Math.cos(counter * angle), radius * Math.sin(counter * angle));
+                mainNetwork.moveNode(row.id, radius * Math.cos(counter * angle), radius * Math.sin(counter * angle));
                 counter++;
             }
         }
 
+        // Function to apply metadata to nodes.
+        let applyMetadata = function(data) {
+            for (row of nodeData) {
+                let node = mainNetwork.body.nodes[row.id];
+                // Set the "title" option of each node to the metadata.
+                // This option specifies what is shown when a node is hovered over.
+                node.setOptions({title: getMetadataString(row.label, data)});
+            }
+        };
+
         // Function for handling the result of a metadata request.
-        let metadataRequestHandler = function(err, data) {
+        let metadataRequestHandlerM = function(err, data) {
             if (err === 404) {
                 console.error('Could not retrieve metadata:\nThe server did not return any metadata.');
             } else if (err === 400) {
@@ -359,56 +391,26 @@ window.onload = function() {
             } else if (err !== null) {
                 console.error('Could not retrieve metadata:\nHTTP status code was ' + err);
             } else {
-                // Set the "title" option of each node to the metadata.
-                // This option specifies what is shown when a node is hovered
-                // over.
-                for (row of nodeData) {
-                    let node = network.body.nodes[row.id];
-                    node.setOptions({title: getMetadataString(row.label, data)});
-                }
+                applyMetadata(data);
                 metadata = data;
             }
         };
 
         // Try to add metadata to the nodes.
         if (metadata === null) {
-            getJSON('http://localhost:8080/getMetadata', metadataRequestHandler);
+            getJSON('http://localhost:8080/getMetadata', metadataRequestHandlerM);
         } else {
-            // Set the "title" option of each node to the metadata.
-            // This option specifies what is shown when a node is hovered over.
-            for (row of nodeData) {
-                let node = network.body.nodes[row.id];
-                node.setOptions({title: getMetadataString(row.label, metadata)});
-            }
+            applyMetadata(metadata);
         }
 
-        // Function for handling the result of a all verticies request.
-        let verticiesRequestHandler = function(err, data) {
-            if (err === 404) {
-                console.error('Could not retrieve all graph nodes:\nThe server did not return any graph nodes.');
-            } else if (err === 400) {
-                console.error('Could not retrieve all graph nodes:\nThe server encountered an error while trying to send graph nodes.');
-            } else if (err !== null) {
-                console.error('Could not retrieve all graph nodes:\nHTTP status code was ' + err);
-            } else {
-                // Set the options in the Jump to dropdown.
-                // These are all nodes in the current graph, even if they're
-                // not connected by any chain of nodes to the currently
-                // selected node.
-                let selectOptions = data.map(vertex => `<option value="${vertex.Value}">${vertex.Tag}</option>`);
-                jumpToSelect.innerHTML = selectOptions.join('\n');
-                allNodes = data;
-            }
-        };
-
         // Try to populate the Jump to node select.
-        if (allNodes === null) {
+        if (dropdownVerticies === null) {
             getJSON('http://localhost:8080/getVerticies', verticiesRequestHandler);
         } else {
             // Set the options in the Jump to dropdown.
             // These are all nodes in the current graph, even if they're not
             // connected by any chain of nodes to the currently selected node.
-            let selectOptions = allNodes.map(vertex => `<option value="${vertex.Value}">${vertex.Tag}</option>`);
+            let selectOptions = dropdownVerticies.map(vertex => `<option value="${vertex.Value}">${vertex.Tag}</option>`);
             jumpToSelect.innerHTML = selectOptions.join('\n');
         }
 
@@ -420,8 +422,8 @@ window.onload = function() {
             applyFilter(filterText);
         }
 
-        // Clicking on a network node.
-        network.on('click', function(properties) {
+        // Clicking on a main network node.
+        mainNetwork.on('click', function(properties) {
             if (demo === true) return;
 
             // vis-network provides a properties object to find what elements
@@ -437,7 +439,7 @@ window.onload = function() {
 
                 // Unselect the nodes as we don't want to show them as
                 // selected.
-                network.unselectAll();
+                mainNetwork.unselectAll();
 
                 // Get the first clicked node (there usually should only be
                 // one anyway.)
@@ -452,7 +454,7 @@ window.onload = function() {
                 // that was clicked on.
                 // Check if the node is one that regulates the current cursor.
                 // If so, a ForceToVertex operation will be used.
-                if (Object.values(network.body.edges).find((edge) => edge.fromId === nextNode.id)) {
+                if (Object.values(mainNetwork.body.edges).find((edge) => edge.fromId === nextNode.id)) {
                     postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ForceToVertex','moveInputs':{'Tag':nextNode.label,'Value':nextNode.id}});
                 } else {
                     postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ToVertex','moveInputs':{'Tag':nextNode.label,'Value':nextNode.id}});
@@ -469,9 +471,11 @@ window.onload = function() {
             // steps.
             for (entry of sourceData.History) {
 
-                // Don't show the last node in the list since that's the current one.
-                if (entry !== sourceData.History[sourceData.History.length - 1]) {
-                    entries.push(`Moved from ${entry.Tag} (${entry.Value}).`);
+                // Show a different entry for the first in the history.
+                if (entry === sourceData.History[sourceData.History.length - 1]) {
+                    entries.unshift(`Started at ${entry.Tag} (${entry.Value}).`);
+                } else {
+                    entries.unshift(`Moved to ${entry.Tag} (${entry.Value}).`);
                 }
             }
 
@@ -479,13 +483,23 @@ window.onload = function() {
             //historyText.innerHTML = '<li>' + entries.reverse().join('</li><li>') + '</li>';
             historyText.innerHTML = '<li>' + entries.join('</li><li>') + '</li>';
 
+            // Add the current history location if it's not at the end.
+            if (sourceData.HistoryIndex === 0 && sourceData.History.length > 1) {
+                historyStatus.innerHTML = 'Currently at starting position.';
+            }
+            else if (sourceData.HistoryIndex < sourceData.History.length - 1) {
+                historyStatus.innerHTML = `Currently at position after step ${sourceData.HistoryIndex + 1}.`;
+            } else {
+                historyStatus.innerHTML = '';
+            }
+
         // Display a message if there's no history yet.
         } else {
             historyText.innerHTML = 'No navigation history.';
         }
-        
+
         // Recolour the overview nodes if that visualisation exists.
-        if (overview !== null) {
+        if (overviewNetwork !== null) {
             recolourOverviewNodes();
         }
     }
@@ -503,13 +517,19 @@ window.onload = function() {
         }
     };
 
-    // Call server for the starting network JSON.
+    // Get the initial network data from the server.
     getJSON('http://localhost:8080/getGraph', graphRequestHandler);
 
     // Clicking on the back button.
     backButton.addEventListener('click', function() {
         if (demo === true) return;
         postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'Back','moveInputs':[]});
+    });
+
+    // Clicking on the forward button.
+    forwardButton.addEventListener('click', function() {
+        if (demo === true) return;
+        postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'Forward','moveInputs':[]});
     });
 
     // Clicking on the filter button.
@@ -568,6 +588,7 @@ window.onload = function() {
             jumpToSelect.removeAttribute("disabled");
             jumpToButton.removeAttribute("disabled");
             nextMostConnectedButton.removeAttribute("disabled");
+            forwardButton.removeAttribute("disabled");
 
             // Don't turn the auto button back on if we had an error
             // and aren't at Crp.
@@ -620,6 +641,7 @@ window.onload = function() {
             jumpToButton.setAttribute("disabled", "disabled");
             autoButton.setAttribute("style", "display: none");
             nextMostConnectedButton.setAttribute("disabled", "disabled");
+            forwardButton.setAttribute("disabled", "disabled");
             demo = true;
 
             // Show status text.
@@ -687,12 +709,12 @@ window.onload = function() {
     let generateOverview = function(sourceData) {
 
         // Clear the current overview if it exists already.
-        if (overview !== null) {
+        if (overviewNetwork !== null) {
 
             // Destroy the overview so we don't have the old nodes and edges
             // existing outside of the overview object.
-            overview.destroy();
-            overview = null;
+            overviewNetwork.destroy();
+            overviewNetwork = null;
         }
 
         // Start collecting the data for nodes.
@@ -734,8 +756,8 @@ window.onload = function() {
         // Set up the proper edge array for visualisation.
         let edges = new vis.DataSet(edgeData);
 
-        // Select the div element to put the network in.
-        let container = document.getElementById('overviewDiv');
+        // Select the div element to put the overview network in.
+        let container = document.getElementById('overviewNetworkDiv');
 
         // Set up the data object.
         let data = {
@@ -759,7 +781,7 @@ window.onload = function() {
             },
             nodes: {
                 shape: 'ellipse', // Set the node shape.
-                color: '#DDDDDD' // Set the node colour to near white.
+                color: '#DDDDDD' // Set the node colour to light gray.
             },
             physics: {
                 enabled: false // Prevent the nodes and edges from automatically moving around to avoid overlaps.
@@ -767,11 +789,42 @@ window.onload = function() {
         };
 
         // Initialize your network!
-        overview = new vis.Network(container, data, options);
-        overview.stabilize(60);
+        overviewNetwork = new vis.Network(container, data, options);
+        overviewNetwork.stabilize(60);
+
+        // Callback function to apply metadata to nodes.
+        let applyMetadata = function(data) {
+            for (row of nodeData) {
+                let node = overviewNetwork.body.nodes[row.id];
+                // Set the "title" option of each node to the metadata.
+                // This option specifies what is shown when a node is hovered over.
+                node.setOptions({title: getMetadataString(row.label, data)});
+            }
+        };
+
+        // Function for handling the result of a metadata request.
+        let metadataRequestHandlerO = function(err, data) {
+            if (err === 404) {
+                console.error('Could not retrieve metadata:\nThe server did not return any metadata.');
+            } else if (err === 400) {
+                console.error('Could not retrieve metadata:\nThe server encountered an error while trying to send metadata.');
+            } else if (err !== null) {
+                console.error('Could not retrieve metadata:\nHTTP status code was ' + err);
+            } else {
+                applyMetadata(data);
+                metadata = data;
+            }
+        };
+
+        // Try to add metadata to the nodes.
+        if (metadata === null) {
+            getJSON('http://localhost:8080/getMetadata', metadataRequestHandlerO);
+        } else {
+            applyMetadata(metadata);
+        }
 
         // Clicking on a overview node.
-        overview.on('click', function(properties) {
+        overviewNetwork.on('click', function(properties) {
             if (demo === true) return;
 
             // vis-network provides a properties object to find what elements
@@ -787,7 +840,7 @@ window.onload = function() {
 
                 // Unselect the nodes as we don't want to show them as
                 // selected.
-                overview.unselectAll();
+                overviewNetwork.unselectAll();
 
                 // Get the first clicked node (there usually should only be
                 // one anyway.)

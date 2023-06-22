@@ -4,15 +4,18 @@
         <script type="text/javascript" src="NetworkVis.js"></script>
 
         <style type="text/css">
-            #networkDiv {
+            .networkDiv {
                 width: 800px;
                 height: 800px;
                 border: 1px solid lightgray;
             }
-            #overviewDiv {
+            .gridDiv {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                grid-gap: 20px;
+            }
+            .columnDiv {
                 width: 800px;
-                height: 800px;
-                border: 1px solid lightgray;
             }
         </style>
     </head>
@@ -20,47 +23,51 @@
         <!-- Header for the network visualisation. -->
         <h1>GraphDSL example</h1>
         <!-- Button for going back one place on the zipper. -->
-        <button id="backButton">Back</button>|
+        <button id="backButton">Back</button>
+
+        <!-- Button for going forward one place on the zipper. -->
+        <button id="forwardButton">Forward</button>
 
         <!-- Text box and button for filtering target nodes. -->
-        <input id="filterInput" placeholder="Filter targets..."></input>
-        <button id="filterButton">Filter</button>|
+        <input type="text" id="filterInput" placeholder="Filter targets..."></input>
+        <button id="filterButton">Filter</button>
 
         <!-- Drop down menu and button for jumping to a specific node. -->
         <select id="jumpToSelect">
         </select>
-        <button id="jumpToButton">Jump to node</button>|
+        <button id="jumpToButton">Jump to node</button>
 
         <!-- Button for moving to the connected vertex that has the most
         connections itself (and we haven't already been to). -->
         <button id="nextMostConnectedButton">Move to most connected neighbour</button>
 
         <!-- Make two columns for the main divs of the page. -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; grid-gap: 20px;">
+        <div class="gridDiv">
 
             <!-- Div for showing the network visualisation. -->
-            <div id="networkDiv"></div>
+            <div class="networkDiv" id="mainNetworkDiv"></div>
 
             <!-- Div for showing the overview visualisation. -->
-            <div id="overviewDiv"></div>
+            <div class="networkDiv" id="overviewNetworkDiv"></div>
         </div>
-        
+
         <!-- Another two columns for additional divs. -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; grid-gap: 20px;">
-        
+        <div class="gridDiv">
+
             <!-- Div for showing additional buttons for the network
             visualisation. -->
-            <div style="width: 800px;">
+            <div class="columnDiv">
                 <!-- Button and text for an automatic traversal from Crp. -->
-                <button id="autoButton" disabled="disabled">Crp traversal demo</button>
+                <button  id="autoButton" disabled="disabled">Crp traversal demo</button>
                 <text id="autoText" style="display: none"></text>
             </div>
 
             <!-- Div for showing the navigation history. -->
-            <div style="width: 800px;">
+            <div class="columnDiv">
                 <p>Key: <text style="background-color: #FF00FF">Current vertex</text> <text style="background-color: #00FFFF">Connected to current vertex</text> <text style="background-color: #DDDDDD">Not connected to current vertex</text></p>
                 <h2>Navigation history:</h2>
                 <ol id="historyText"></ol>
+                <p id="historyStatus"></p>
             </div>
         </div>
     </body>
