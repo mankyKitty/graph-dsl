@@ -464,24 +464,48 @@ window.onload = function() {
 
         // Display the zipper history if there is any.
         if (sourceData.History.length > 1) {
+            // Clear the existing history items.
+            while (historyText.firstChild) {
+                historyText.removeChild(historyText.lastChild);
+            }
+
+            // Array for history entries.
             let entries = [];
 
             // Currently, the objects in the zipper's history are "MoveOp"
             // type in the F# code, so determining what they are takes some
             // steps.
-            for (entry of sourceData.History) {
+            for (vertex of sourceData.History) {
 
                 // Show a different entry for the first in the history.
-                if (entry === sourceData.History[sourceData.History.length - 1]) {
-                    entries.unshift(`Started at ${entry.Tag} (${entry.Value}).`);
+                if (vertex === sourceData.History[sourceData.History.length - 1]) {
+                    entries.unshift(`Started at ${vertex.Tag} (${vertex.Value}).`);
                 } else {
-                    entries.unshift(`Moved to ${entry.Tag} (${entry.Value}).`);
+                    entries.unshift(`Moved to ${vertex.Tag} (${vertex.Value}).`);
                 }
             }
 
             // Join all the entries together as HTML list elements.
             //historyText.innerHTML = '<li>' + entries.reverse().join('</li><li>') + '</li>';
-            historyText.innerHTML = '<li>' + entries.join('</li><li>') + '</li>';
+            //historyText.innerHTML = '<li>' + entries.join('</li><li>') + '</li>';
+
+            // Create a list item with a link for each entry. Clicking on an
+            // entry tells the zipper to jump to that point in the history.
+            let i = 0;
+            for (entry of entries) {
+                let listItem = document.createElement('li');
+                let itemLink = document.createElement('a');
+                itemLink.setAttribute('href', '#');
+                let currentI = i;
+                itemLink.addEventListener('click', function (properties) {
+                    if (demo === true) return;
+                    postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'GoToHistory','moveInputs':currentI});
+                });
+                itemLink.innerHTML = entry;
+                listItem.appendChild(itemLink);
+                historyText.appendChild(listItem);
+                i++;
+            }
 
             // Add the current history location if it's not at the end.
             if (sourceData.HistoryIndex === 0 && sourceData.History.length > 1) {

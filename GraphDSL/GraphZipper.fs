@@ -92,11 +92,22 @@ let moveToHistoryIndex (z: Zipper<'V, 'E>) i : Zipper<'V, 'E> =
     // Thanks to the vertex list, we can just jump to the vertex directly - no
     // need to interpret the move history list.
     let newZ =
-        if (i > z.VertHistory.Length - 1) then
+        // If given the same index as the zipper is already on, just return the
+        // existing zipper.
+        if (i.Equals(z.HistoryIndex)) then
+            z
+        // If given an index greater than the length of the history, cap it at
+        // the latest item in the history.
+        else if (i > z.VertHistory.Length - 1) then
                 { Cursor = List.item (0) z.VertHistory;
                 History = z.History;
                 VertHistory = z.VertHistory;
                 HistoryIndex = (z.VertHistory.Length - 1)}
+        // Otherwise set the cursor and history index accordingly. The history
+        // lists start with the latest item, so we need to subtract the
+        // supplied integer from the length to get the correct index for the
+        // list.
+        // If given a negative index, cap it at the first item in the history.
         else
                 { Cursor = List.item ((z.VertHistory.Length - 1) - (max 0 i)) z.VertHistory;
                 History = z.History;

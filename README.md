@@ -41,6 +41,10 @@ $ curl -X POST -vvv --data '{"moveOp":"NextMostConnected","moveInputs":[]}' http
 ```
 $ curl -X POST -vvv --data '{"moveOp":"Forward","moveInputs":[]}' http://localhost:8080/move
 ```
+#### GoToHistory:
+```
+$ curl -X POST -vvv --data '{"moveOp":"GoToHistory","moveInputs":0}' http://localhost:8080/move
+```
 
 ### Windows
 #### ToVertex:
@@ -70,4 +74,8 @@ curl -X POST -vvv --data {\"moveOp\":\"NextMostConnected\",\"moveInputs\":[]} ht
 #### Forward
 ```
 curl -X POST -vvv --data {\"moveOp\":\"Forward\",\"moveInputs\":[]} http://localhost:8080/move
+```
+#### GoToHistory
+```
+curl -X POST -vvv --data {\"moveOp\":\"GoToHistory\",\"moveInputs\":0} http://localhost:8080/move
 ```

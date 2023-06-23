@@ -189,6 +189,7 @@ type MoveOp =
     | ForceToVertex of Vert
     | NextMostConnected
     | Forward
+    | GoToHistory of int
 
 let newEdge (a: Vert, b: Vert, t: string) : TaggedEdge<Vert, string> =
     new TaggedEdge<Vert, string>(a,b,t)
@@ -255,6 +256,7 @@ let f g z rq =
                     | ForceToVertex vval -> forceMoveToVertex (g, !z, vval)
                     | NextMostConnected -> findNextMostConnected (g, z)
                     | Forward -> Some(moveForward !z)
+                    | GoToHistory i -> Some(moveToHistoryIndex !z i)
 
     match moveRes with
         // Message changed by Samuel Smith n7581769.
@@ -388,6 +390,8 @@ let generateFreshGraph: AppGraph =
 // $ curl -X POST -vvv --data '{"moveOp":"MetadataSearchMulti","moveInputs":{"Operation":"OR","Queries":[{"Property":"Synonyms","Value":"child"},{"Property":"Name","Value":"two"}]}}' http://localhost:8080/move
 // Forward:
 // $ curl -X POST -vvv --data '{"moveOp":"Forward","moveInputs":[]}' http://localhost:8080/move
+// GoToHistory:
+// $ curl -X POST -vvv --data '{"moveOp":"GoToHistory","moveInputs":0}' http://localhost:8080/move
 
 // Example curl commands (Windows):
 // ToVertex:
@@ -404,6 +408,10 @@ let generateFreshGraph: AppGraph =
 // curl -X POST -vvv --data {\"moveOp\":\"NextMostConnected\",\"moveInputs\":[]} http://localhost:8080/move
 // Forward:
 // curl -X POST -vvv --data {\"moveOp\":\"Forward\",\"moveInputs\":[]} http://localhost:8080/move
+// GoToHistory:
+// curl -X POST -vvv --data {\"moveOp\":\"GoToHistory\",\"moveInputs\":0} http://localhost:8080/move
+
+
 [<EntryPoint>]
 let main argv =
     let mutable g = generateFreshGraph
