@@ -13,16 +13,24 @@ open Suave.Writers
 open QuikGraph
 open GraphDSL.Zipper
 
+// Specifies the vertex used for the bidirectional graph. Each vertex has a
+// string tag to name it, and a integer value that is used as an identifier.
 type Vert =
     { Tag: string
       Value: int }
 
+// Specifies the configuration for the QuikGraph used.
 type AppGraph = BidirectionalGraph<Vert, TaggedEdge<Vert,string>>
 
+// Type to specify which property of a vertex to test with a comparison
+// operation.
 type Property =
     | Tag of string
     | Value of int
 
+// Type to define possible comparison operations.
+// EqualTo can test against both vertex tags and values; ValueLessThan and
+// ValueGreaterThan can only test against vertex values.
 type CompOp =
     | EqualTo of Property
     | ValueLessThan of int
@@ -49,7 +57,6 @@ type MiniGraph = {
     Edges : MiniJsonEdge list
 }
 
-
 // Data used in a MetadataSearch move request.
 type Query =
     { Property: string
@@ -74,13 +81,6 @@ type ExampleInfo = {
     Synonyms : string list;
 }
 
-// MiniGraph type that allows for metadata being sent with it.
-(*type MiniGraphMetadata = {
-    Vertex : Vert
-    Edges : MiniJsonEdge list
-    Metadata : ExampleInfo list
-}*)
-
 // MiniGraph type that allows for zipper history being sent with it.
 type MiniGraphMetadata = {
     Vertex : Vert
@@ -91,6 +91,8 @@ type MiniGraphMetadata = {
 
 // Added by Samuel Smith n7581769.
 // Creates a example set of metadata for the example graph.
+// Synonyms are used in the example visuaisation for filters and can also be
+// used for move operations based on vertices matching certain criteria.
 let GenerateExampleMetadata () =
     [{
         Id = "0";
@@ -131,6 +133,8 @@ let SearchMetadata (row : ExampleInfo) query =
         | "Synonyms" -> not (List.tryFind (fun (item: string) -> item.Contains(query.Value)) row.Synonyms = None)
         | _ -> false
 
+// Checks the loaded metadata for the specified vertex (using its name as the
+// identifier).
 let findMatchingMetadataRow (vertex: Vert) mdata =
   List.tryFind (fun (row : ExampleInfo) -> row.Name.ToLower().Equals(vertex.Tag.ToLower())) mdata
 
@@ -178,25 +182,31 @@ let findFirstWithMetadataMulti((graph : BidirectionalGraph<Vert, TaggedEdge<Vert
 // Our boundary types are different to the internal zipper types so there isn't conceptual leakage between the two.
 [<JsonUnion(Mode = UnionMode.CaseKeyAsFieldValue, CaseKeyField="moveOp", CaseValueField="moveInputs")>]
 type MoveOp =
-    | ToVertex of Vert      // Explicit tag name of the target vertex
-    | AlongEdge of string   // Explicit tag name of the edge to move along.
-    | FirstEdge of string   // Move along the first edge matching the given selection options
-    | FirstVertex of CompOp // Try to move to the first vertex connected to the current vertex matching the given comparison
-    | Back
+    | ToVertex of Vert      // Move to the vertex that matches the given tag and value.
+    | AlongEdge of string   // Move to the vertex that is the destination of the given edge.
+    | FirstEdge of string   // Move along the first edge matching the given selection options.
+    | FirstVertex of CompOp // Move to the first vertex connected to the current vertex matching the given comparison.
+    | Back                  // Move to the vertex that was before the last move in the zipper's history. Does not erase the history.
     // MoveOps added by Samuel Smith n7581769.
-    | MetadataSearch of Query
-    | MetadataSearchMulti of MultiQuery
-    | ForceToVertex of Vert
-    | NextMostConnected
-    | Forward
-    | GoToHistory of int
+    | MetadataSearch of Query           // Move to the first vertex whose metadata matches the given search query.
+    | MetadataSearchMulti of MultiQuery // Move to the first vertex whose metadata matches the given multiple search queries (either all of them via AND, or at least one via OR).
+    | ForceToVertex of Vert             // Move to the vertex that matches the given tag and value. Can move across backwards edges.
+    | NextMostConnected                 // Move to the vertex with the most outgoing connections connected to the current cursor (that has not already been visited).
+    | Forward                           // Move to the vertex that was after the next move in the zipper's history. Does not erase the history.
+    | GoToHistory of int                // Move to the vertex after the specified step in the zipper's history (or the starting vertex if given 0). Does not erase the history.
 
+// Creates a new edge from the first specified vertex to the second with the
+// specified tag.
 let newEdge (a: Vert, b: Vert, t: string) : TaggedEdge<Vert, string> =
     new TaggedEdge<Vert, string>(a,b,t)
 
+// Creates a new vertex with the specified tag and value.
 let newVert (tag: string, v: int): Vert =
     { Tag = tag; Value = v }
 
+// Comparison operations for matching to vertices. Can work against the value
+// or the tag. Values can be tested to be equal to, greater than or less than
+// the given value, and tags can be tested to be equal to the given value.
 let mkCompOp (c: CompOp): (Vert -> bool) =
     match c with
         | ValueLessThan i -> fun v -> v.Value < i
@@ -206,26 +216,30 @@ let mkCompOp (c: CompOp): (Vert -> bool) =
 
 // Added by Samuel Smith n7581769.
 // Attempts to move to the connected vertex that has the most outgoing
-// connections
+// connections.
 let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>), z) =
 
-    // Sort the list of verticies connected to the current vertex by how many
+    // Sort the list of vertices connected to the current vertex by how many
     // connections they have.
     let sortedEdges = Seq.sortByDescending (fun (edge : TaggedEdge<Vert,string>) -> Seq.length (g.OutEdges(edge.Target))) (g.OutEdges((!z).Cursor))
-    let sortedVerticies = Seq.distinct (Seq.map (fun (edge : TaggedEdge<Vert,string>) -> edge.Target) sortedEdges)
+    let sortedVertices = Seq.distinct (Seq.map (fun (edge : TaggedEdge<Vert,string>) -> edge.Target) sortedEdges)
     #if DEBUG
-    Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has %i targets" vertex.Tag (Seq.length (g.OutEdges(vertex)))) sortedVerticies
+    Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has %i targets" vertex.Tag (Seq.length (g.OutEdges(vertex)))) sortedVertices
     Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((!z).HistoryIndex + 1) (!z).VertHistory)
     #endif
 
+    // Function for checking if a vertex is in the history; used in the
+    // function below.
     let checkInHistory (vertex : Vert) =
         match Seq.tryFind(fun historyVert -> vertex.Equals(historyVert)) (last ((!z).HistoryIndex + 1) (!z).VertHistory) with
         | Some (result) -> true
         | None -> false
 
+    // Function to check for the first vertex in the sorted list that isn't
+    // in the history. This will be the next most connected vertex.
     let targetVert =
         // Find a vertex that's not already in the history.
-        match Seq.tryFind (fun (sortedVert : Vert) -> not (checkInHistory sortedVert)) sortedVerticies with
+        match Seq.tryFind (fun (sortedVert : Vert) -> not (checkInHistory sortedVert)) sortedVertices with
         | Some (result) -> result
         | None -> newVert("null", -1)
 
@@ -236,6 +250,8 @@ let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>
     // Call the movement function for a matching vertex.
     moveAlongFirstMatchingVertex(g, !z, filterQuery)
 
+// Handles a move request. Attempts to complete the request, failing with a 404
+// response if the operation did not return a valid vertex.
 let f g z rq =
     let moveOp =
       rq.rawForm
@@ -244,6 +260,8 @@ let f g z rq =
 
     // Message changed by Samuel Smith n7581769.
     printfn "Received move operation: %s" (moveOp.ToString())
+
+    // Determine the move operation to use.
     let moveRes = match moveOp with
                     | ToVertex vval -> moveToVertex (g, !z, vval)
                     | AlongEdge eege -> moveAlongEdge (g, !z, newEdge(newVert("dummy",-1),newVert("dummy",-2), eege))
@@ -258,13 +276,15 @@ let f g z rq =
                     | Forward -> Some(moveForward !z)
                     | GoToHistory i -> Some(moveToHistoryIndex !z i)
 
+    // Attempt to complete the move operation.
     match moveRes with
         // Message changed by Samuel Smith n7581769.
-        | None -> NOT_FOUND "No valid node to move to."
+        | None -> NOT_FOUND "No valid vertex to move to."
         | Some r ->
             z := r
             OK (Json.serialize (!z).Cursor)
 
+// Handles a whereami request by returning the current zipper cursor.
 let whereami z _rq = OK (Json.serialize (!z).Cursor)
 
 // Routes added by Samuel Smith n7581769.
@@ -284,9 +304,10 @@ let getGraphRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) z _req
     OK (Json.serialize { Vertex = (!z).Cursor; Edges = Seq.toList edgesMap; History = (!z).VertHistory; HistoryIndex = (!z).HistoryIndex })
 
 // Added by Samuel Smith n7581769.
+// Adds CORS headers to allow cross origin requests.
 //https://stackoverflow.com/questions/44359375/allow-multiple-headers-with-cors-in-suave
 let setCORSHeaders =
-    addHeader  "Access-Control-Allow-Origin" "*"
+    addHeader "Access-Control-Allow-Origin" "*"
     >=> addHeader "Access-Control-Allow-Headers" "content-type"
 
 // Added by Samuel Smith n7581769.
@@ -295,9 +316,9 @@ let getMetadataRoute _request =
     printfn "Received getMetadata operation."
     OK (Json.serialize (GenerateExampleMetadata()))
 
-// Returns all the verticies in the current graph.
-let getVerticiesRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) _request =
-    printfn "Received getVerticies operation."
+// Returns all the vertices in the current graph.
+let getVerticesRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) _request =
+    printfn "Received getVertices operation."
     OK (Json.serialize (Seq.toList g.Vertices))
 
 // Returns all the edges in the current graph.
@@ -307,74 +328,127 @@ let getEdgesRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) _reque
     OK (Json.serialize (Seq.toList edgesMap))
 
 // CORS handlers added by Samuel Smith n7581769.
+// Handles the routes for the example.
 let app g z =
     choose
+
+      // Request to move the current zipper cursor.
       [ POST >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
           [ path "/move" >=> request (f g z) ] )
+
+        // Request to return the current zipper cursor.
         GET >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
-          [ path "/whereami" >=> request (whereami z) ] ) //] )
+          [ path "/whereami" >=> request (whereami z) ] )
+
         // Routes added by Samuel Smith n7581769.
+        // Request to show all valid destinations from the current zipper
+        // cursor.
         GET >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
           [ path "/wheretogo" >=> request (connectedRoute g z) ] )
+
+        // Request to return the current zipper cursor and all vertices
+        // connected to it. Includes vertices that have an ingoing edge to
+        // the current cursor.
         GET >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
           [ path "/getGraph" >=> request (getGraphRoute g z) ] )
+
+        // Request to get the metadata for the graph.
         GET >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
           [ path "/getMetadata" >=> request (getMetadataRoute)] )
+
+        // Request to get a list of all vertices in the current graph.
         GET >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
-          [ path "/getVerticies" >=> request (getVerticiesRoute g) ] )
+          [ path "/getVertices" >=> request (getVerticesRoute g) ] )
+
+        // Request to get a list of all edges in the current graph.
         GET >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
           [ path "/getEdges" >=> request (getEdgesRoute g) ] ) ]
 
-let addEdgeOrDie (g: AppGraph, e: TaggedEdge<Vert,string>) =
-    if g.AddEdge(e) then () else failwith "Failed to add edge"
+// Attempts to add an edge to the graph.
+// Changes by Samuel Smith n7581769:
+// - No longer fails if the edge already exists; and
+// - Changed name to tryAddEdge.
+let tryAddEdge (g: AppGraph, e: TaggedEdge<Vert,string>) =
+    let success = g.AddEdge(e)
+    // If the edge add operation returned false (i.e. the edge wasn't added)
+    // then check if the edge is in the graph; this means that the edge was
+    // already in the graph.
+    if (not success) then
+        if (g.ContainsEdge(e)) then
+            ()
+        // Otherwise, the operation failed for another reason and there's a
+        // problem with creating the graph.
+        else
+            failwith "Failed to add edge"
+    else
+        ()
 
-let addVertexOrDie2 (g:AppGraph) (v:Vert) =
-    if g.AddVertex(v) then () else failwith "Failed to add vertex"
+// Attempts to add a avertex to the graph.
+// Changes by Samuel Smith n7581769:
+// - No longer fails if the vertex already exists; and
+// - Changed name to tryAddVertex.
+let tryAddVertex (g: AppGraph, v: Vert) =
+    let success = g.AddVertex(v)
+    // If the vertex add operation returned false (i.e. the vertex wasn't
+    // added) then check if the vertex is in the graph; this means that the
+    // vertex was already in the graph.
+    if (not success) then
+        if (g.ContainsVertex(v)) then
+            ()
+        // Otherwise, the operation failed for another reason and there's a
+        // problem with creating the graph.
+        else
+            failwith "Failed to add vertex"
+    else
+        ()
 
-let addVertexOrDie (g: AppGraph, v: Vert) =
-    if g.AddVertex(v) then () else failwith "Failed to add vertex"
-
+// Generates the graph for this example.
 let generateFreshGraph: AppGraph =
     let mutable g = new BidirectionalGraph<Vert, TaggedEdge<Vert,string>> ()
+
+    // Create the vertices for the graph.
     let vzero = newVert("zero", 0)
     let vone = newVert("one", 1)
     let vtwo = newVert("two", 2)
     let vthree = newVert("three", 3)
     let vfortytwo = newVert("forty-two", 42)
 
-    addVertexOrDie (g, vzero)
-    addVertexOrDie (g, vone)
-    addVertexOrDie (g, vtwo)
-    addVertexOrDie (g, vthree)
-    addVertexOrDie (g, vfortytwo)
+    // Attempt to add the vertices to the graph.
+    tryAddVertex (g, vzero)
+    tryAddVertex (g, vone)
+    tryAddVertex (g, vtwo)
+    tryAddVertex (g, vthree)
+    tryAddVertex (g, vfortytwo)
 
-    addEdgeOrDie (g, (newEdge (vzero, vone, "add_one")))
-    addEdgeOrDie (g, (newEdge (vzero, vtwo, "add_two")))
-    addEdgeOrDie (g, (newEdge (vtwo, vthree, "two_three")))
-    addEdgeOrDie (g, (newEdge (vone, vthree, "one_three")))
-    addEdgeOrDie (g, (newEdge (vthree, vfortytwo, "end")))
+    // Attempt to add edges to the graph.
+    tryAddEdge (g, (newEdge (vzero, vone, "add_one")))
+    tryAddEdge (g, (newEdge (vzero, vtwo, "add_two")))
+    tryAddEdge (g, (newEdge (vtwo, vthree, "two_three")))
+    tryAddEdge (g, (newEdge (vone, vthree, "one_three")))
+    tryAddEdge (g, (newEdge (vthree, vfortytwo, "end")))
 
+    // Return the completed graph.
     g
 
 // Example curl commands (Linux):
@@ -410,12 +484,12 @@ let generateFreshGraph: AppGraph =
 // curl -X POST -vvv --data {\"moveOp\":\"Forward\",\"moveInputs\":[]} http://localhost:8080/move
 // GoToHistory:
 // curl -X POST -vvv --data {\"moveOp\":\"GoToHistory\",\"moveInputs\":0} http://localhost:8080/move
-
-
 [<EntryPoint>]
+// Main function for the example serer. Creates a graph and zipper and uses
+// them to start the web server with the specified configuration.
 let main argv =
     let mutable g = generateFreshGraph
-    printfn "Graph Status verticies: %i, edges: %i" (g.VertexCount) (g.EdgeCount)
+    printfn "Graph Status vertices: %i, edges: %i" (g.VertexCount) (g.EdgeCount)
     let root = newVert("zero", 0)
     printfn "Root JSON: %s" (Json.serialize root)
     let mutable freshZip = ref (createZipper root)

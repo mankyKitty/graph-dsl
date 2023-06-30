@@ -19,7 +19,7 @@ type Zipper<'V, 'E> =
     { Cursor: 'V
       History: list<Move<'V, 'E>>
 // Added by Samuel Smith n7581769.
-// A list of verticies that have been visited (to enable checking what's been
+// A list of vertices that have been visited (to enable checking what's been
 // visited easily).
       VertHistory: list<'V>
 // The current position in the history we're at. Used to enable going back

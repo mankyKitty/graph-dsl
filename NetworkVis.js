@@ -19,7 +19,7 @@ window.onload = function() {
     let currentCursor = null;
     let currentCursorId = null;
     let metadata = null;
-    let dropdownVerticies = null;
+    let dropdownVertices = null;
 
     // Overview of the whole graph.
     let overviewNetwork = null;
@@ -204,8 +204,8 @@ window.onload = function() {
         mainNetwork.body.data.nodes.update(nodeUpdates);
     }
 
-    // Function for handling the result of a all verticies request.
-    let verticiesRequestHandler = function(err, data) {
+    // Function for handling the result of a all vertices request.
+    let verticesRequestHandler = function(err, data) {
         if (err === 404) {
             console.error('Could not retrieve all graph nodes:\nThe server did not return any graph nodes.');
         } else if (err === 400) {
@@ -218,7 +218,7 @@ window.onload = function() {
             // connected by any chain of nodes to the currently selected node.
             let selectOptions = data.map(vertex => `<option value="${vertex.Value}">${vertex.Tag}</option>`);
             jumpToSelect.innerHTML = selectOptions.join('\n');
-            dropdownVerticies = data;
+            dropdownVertices = data;
         }
     };
 
@@ -404,13 +404,13 @@ window.onload = function() {
         }
 
         // Try to populate the Jump to node select.
-        if (dropdownVerticies === null) {
-            getJSON('http://localhost:8080/getVerticies', verticiesRequestHandler);
+        if (dropdownVertices === null) {
+            getJSON('http://localhost:8080/getVertices', verticesRequestHandler);
         } else {
             // Set the options in the Jump to dropdown.
             // These are all nodes in the current graph, even if they're not
             // connected by any chain of nodes to the currently selected node.
-            let selectOptions = dropdownVerticies.map(vertex => `<option value="${vertex.Value}">${vertex.Tag}</option>`);
+            let selectOptions = dropdownVertices.map(vertex => `<option value="${vertex.Value}">${vertex.Tag}</option>`);
             jumpToSelect.innerHTML = selectOptions.join('\n');
         }
 
