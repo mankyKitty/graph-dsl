@@ -20,7 +20,7 @@ type Vert =
       Value: int }
 
 // Specifies the configuration for the QuikGraph used.
-type AppGraph = BidirectionalGraph<Vert, TaggedEdge<Vert,string>>
+type AppGraph = BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>
 
 // Type to specify which property of a vertex to test with a comparison
 // operation.
@@ -142,7 +142,7 @@ let findMatchingMetadataRow (vertex: Vert) mdata =
 // Attempts to move to a vertex meeting the specified query conditions.
 // Only accepts a single query that specifies a property to search on and a
 // value that that property contains.
-let findFirstWithMetadata((graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>), zipper, (query : Query)) =
+let findFirstWithMetadata((graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>), zipper, (query : Query)) =
     // Get the metadata for the graph.
     let metadata = GenerateExampleMetadata()
     // Create the function to test for true or false on a vertex.
@@ -160,7 +160,7 @@ let findFirstWithMetadata((graph : BidirectionalGraph<Vert, TaggedEdge<Vert,stri
 // Attempts to move to a vertex meeting the specified query conditions.
 // Accepts a list of queries (consisting of the property and the value they
 // should contain) and the logical operator to use with those queries.
-let findFirstWithMetadataMulti((graph : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>), zipper, (queryList : MultiQuery)) =
+let findFirstWithMetadataMulti((graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>), zipper, (queryList : MultiQuery)) =
     // Get the metadata for the graph.
     let metadata = GenerateExampleMetadata()
     // Create the function to test for true or false on a vertex.
@@ -197,8 +197,8 @@ type MoveOp =
 
 // Creates a new edge from the first specified vertex to the second with the
 // specified tag.
-let newEdge (a: Vert, b: Vert, t: string) : TaggedEdge<Vert, string> =
-    new TaggedEdge<Vert, string>(a,b,t)
+let newEdge (a: Vert, b: Vert, t: string) : TaggedValueEdge<Vert, string, int> =
+    new TaggedValueEdge<Vert, string, int>(a,b,t,1)
 
 // Creates a new vertex with the specified tag and value.
 let newVert (tag: string, v: int): Vert =
@@ -217,14 +217,13 @@ let mkCompOp (c: CompOp): (Vert -> bool) =
 // Added by Samuel Smith n7581769.
 // Attempts to move to the connected vertex that has the most outgoing
 // connections.
-let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>), z) =
+let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>), z) =
 
-    // Sort the list of vertices connected to the current vertex by how many
-    // connections they have.
-    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedEdge<Vert,string>) -> Seq.length (g.OutEdges(edge.Target))) (g.OutEdges((!z).Cursor))
-    let sortedVertices = Seq.distinct (Seq.map (fun (edge : TaggedEdge<Vert,string>) -> edge.Target) sortedEdges)
+    // Sort the list of edges connected to the current vertex by how many
+    // connections their targets have.
+    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedValueEdge<Vert,string,int>) -> edge.Value) (g.OutEdges((!z).Cursor))
     #if DEBUG
-    Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has %i targets" vertex.Tag (Seq.length (g.OutEdges(vertex)))) sortedVertices
+    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,int>) -> printfn "Vertex %s has %i targets" edge.Target.Tag edge.Value) sortedEdges
     Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((!z).HistoryIndex + 1) (!z).VertHistory)
     #endif
 
@@ -235,20 +234,21 @@ let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>
         | Some (result) -> true
         | None -> false
 
-    // Function to check for the first vertex in the sorted list that isn't
-    // in the history. This will be the next most connected vertex.
-    let targetVert =
+    // Function to check for the first edge in the sorted list whose target
+    // isn't in the history. This will be the edge that is connected to the
+    // next most connected vertex.
+    let targetEdge =
         // Find a vertex that's not already in the history.
-        match Seq.tryFind (fun (sortedVert : Vert) -> not (checkInHistory sortedVert)) sortedVertices with
+        match Seq.tryFind (fun (sortedEdge : TaggedValueEdge<Vert,string,int>) -> not (checkInHistory sortedEdge.Target)) sortedEdges with
         | Some (result) -> result
-        | None -> newVert("null", -1)
+        | None -> new TaggedValueEdge<Vert, string, int>(newVert("null_1", -1),newVert("null_2", -2),"null",-1) // This is beccause each side needs to return a value.
 
-    // Create the function to test for true or false on a vertex.
-    let filterQuery (vertex : Vert) =
-        vertex.Equals(targetVert)
+    // Create the function to test for true or false on an edge.
+    let filterQuery (edge : TaggedValueEdge<Vert,string,int>) =
+        edge.Equals(targetEdge)
 
-    // Call the movement function for a matching vertex.
-    moveAlongFirstMatchingVertex(g, !z, filterQuery)
+    // Call the movement function for a matching edge.
+    moveAlongFirstMatchingEdge(g, !z, filterQuery)
 
 // Handles a move request. Attempts to complete the request, failing with a 404
 // response if the operation did not return a valid vertex.
@@ -289,18 +289,18 @@ let whereami z _rq = OK (Json.serialize (!z).Cursor)
 
 // Routes added by Samuel Smith n7581769.
 // Returns all edges connected to the current vertex.
-let connectedRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) z _request =
+let connectedRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>) z _request =
     //printfn "Received wheretogo operation."
     let edges = g.OutEdges((!z).Cursor)
-    let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
+    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,int>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
     OK (Json.serialize { Edges = Seq.toList edgesMap })
 
 // Returns the current vertex and all edges connected to it.
-let getGraphRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) z _request =
+let getGraphRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>) z _request =
     printfn "Received getGraph operation."
     let currentVertex = (!z).Cursor
-    let edges = Seq.filter (fun (item : TaggedEdge<Vert,string>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) g.Edges
-    let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
+    let edges = Seq.filter (fun (item : TaggedValueEdge<Vert,string,int>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) g.Edges
+    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,int>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
     OK (Json.serialize { Vertex = (!z).Cursor; Edges = Seq.toList edgesMap; History = (!z).VertHistory; HistoryIndex = (!z).HistoryIndex })
 
 // Added by Samuel Smith n7581769.
@@ -317,14 +317,14 @@ let getMetadataRoute _request =
     OK (Json.serialize (GenerateExampleMetadata()))
 
 // Returns all the vertices in the current graph.
-let getVerticesRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) _request =
+let getVerticesRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>) _request =
     printfn "Received getVertices operation."
     OK (Json.serialize (Seq.toList g.Vertices))
 
 // Returns all the edges in the current graph.
-let getEdgesRoute (g : BidirectionalGraph<Vert, TaggedEdge<Vert,string>>) _request =
+let getEdgesRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>) _request =
     printfn "Received getEdges operation."
-    let edgesMap = Seq.map (fun (item : TaggedEdge<Vert,string>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) g.Edges
+    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,int>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) g.Edges
     OK (Json.serialize (Seq.toList edgesMap))
 
 // CORS handlers added by Samuel Smith n7581769.
@@ -389,7 +389,7 @@ let app g z =
 // Changes by Samuel Smith n7581769:
 // - No longer fails if the edge already exists; and
 // - Changed name to tryAddEdge.
-let tryAddEdge (g: AppGraph, e: TaggedEdge<Vert,string>) =
+let tryAddEdge (g: AppGraph, e: TaggedValueEdge<Vert,string,int>) =
     let success = g.AddEdge(e)
     // If the edge add operation returned false (i.e. the edge wasn't added)
     // then check if the edge is in the graph; this means that the edge was
@@ -425,7 +425,7 @@ let tryAddVertex (g: AppGraph, v: Vert) =
 
 // Generates the graph for this example.
 let generateFreshGraph: AppGraph =
-    let mutable g = new BidirectionalGraph<Vert, TaggedEdge<Vert,string>> ()
+    let mutable g = new BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>> ()
 
     // Create the vertices for the graph.
     let vzero = newVert("zero", 0)
@@ -447,6 +447,10 @@ let generateFreshGraph: AppGraph =
     tryAddEdge (g, (newEdge (vtwo, vthree, "two_three")))
     tryAddEdge (g, (newEdge (vone, vthree, "one_three")))
     tryAddEdge (g, (newEdge (vthree, vfortytwo, "end")))
+
+    // Go through all the edges in the graph, and set their value to the number
+    // of connected edges of the target vertex.
+    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,int>) -> edge.Value <- Seq.length (g.OutEdges(edge.Target))) g.Edges
 
     // Return the completed graph.
     g
