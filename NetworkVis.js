@@ -10,7 +10,7 @@ window.onload = function() {
     let historyText = document.getElementById('historyText');
     let jumpToSelect = document.getElementById('jumpToSelect');
     let jumpToButton = document.getElementById('jumpToButton');
-    let nextMostConnectedButton = document.getElementById('nextMostConnectedButton');
+    let moveByScoreButton = document.getElementById('moveByScoreButton');
     let historyStatus = document.getElementById('historyStatus');
     let forwardButton = document.getElementById('forwardButton');
 
@@ -23,6 +23,9 @@ window.onload = function() {
 
     // Overview of the whole graph.
     let overviewNetwork = null;
+
+    // Current user filter.
+    let currentFilterText = '';
 
     // GET request for retrieving JSON.
     // https://stackoverflow.com/questions/12460378/how-to-get-json-from-url-in-javascript
@@ -135,13 +138,13 @@ window.onload = function() {
 
         // Otherwise return a placeholder string.
         } else {
-            return "No metadata available";
+            return 'No metadata available';
         }
     }
 
     // Function for filtering visible nodes.
     // Defaults to no filter which shows all nodes in the main network.
-    let applyFilter = function(filterText = "") {
+    let applyFilter = function(filterText = '') {
 
         // List of updates to push to edges and nodes.
         // The objects in these arrays will include the edge/node id to change
@@ -172,6 +175,9 @@ window.onload = function() {
                 // but the key is returned as a string when we iterate.
                 nodeUpdates.push({ id: parseInt(nodeId), hidden: false });
             }
+
+            // Update the button for moving by score.
+            moveByScoreButton.innerHTML = 'Move to most connected neighbour'
         // Otherwise, find the edges and nodes that should be hidden.
         } else {
 
@@ -197,11 +203,17 @@ window.onload = function() {
                     }
                 }
             }
+
+            // Update the button for moving by score.
+            moveByScoreButton.innerHTML = 'Move to next most relevant to query'
         }
 
         // Update the main network with all the changes.
         mainNetwork.body.data.edges.update(edgeUpdates);
         mainNetwork.body.data.nodes.update(nodeUpdates);
+
+        // Set the current filter.
+        currentFilterText = filterText;
     }
 
     // Function for handling the result of a all vertices request.
@@ -588,9 +600,13 @@ window.onload = function() {
     });
 
     // Clicking the "Move to most connected neighbour" button.
-    nextMostConnectedButton.addEventListener('click', function() {
+    moveByScoreButton.addEventListener('click', function() {
         if (demo === true) return;
-        postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'NextMostConnected','moveInputs':[]});
+        if (currentFilterText.length < 1) {
+            postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'NextMostConnected','moveInputs':[]});
+        } else {
+            postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'NextHighestQueryScore','moveInputs':{'Property':'Synonyms','Value':currentFilterText}});
+        }
     });
 
     // Button for demonstrating a traversal with Crp as the starting
@@ -611,7 +627,7 @@ window.onload = function() {
             filterButton.removeAttribute("disabled");
             jumpToSelect.removeAttribute("disabled");
             jumpToButton.removeAttribute("disabled");
-            nextMostConnectedButton.removeAttribute("disabled");
+            moveByScoreButton.removeAttribute("disabled");
             forwardButton.removeAttribute("disabled");
 
             // Don't turn the auto button back on if we had an error
@@ -664,7 +680,7 @@ window.onload = function() {
             jumpToSelect.setAttribute("disabled", "disabled");
             jumpToButton.setAttribute("disabled", "disabled");
             autoButton.setAttribute("style", "display: none");
-            nextMostConnectedButton.setAttribute("disabled", "disabled");
+            moveByScoreButton.setAttribute("disabled", "disabled");
             forwardButton.setAttribute("disabled", "disabled");
             demo = true;
 

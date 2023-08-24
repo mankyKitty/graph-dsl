@@ -20,7 +20,7 @@ type Vert =
       Value: int }
 
 // Specifies the configuration for the QuikGraph used.
-type AppGraph = BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>
+type AppGraph = BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>
 
 // Type to specify which property of a vertex to test with a comparison
 // operation.
@@ -89,6 +89,9 @@ type MiniGraphMetadata = {
     HistoryIndex : int
 }
 
+// Default value for edges.
+let DEFAULT_EDGE_VALUE = 1.0
+
 // Added by Samuel Smith n7581769.
 // Creates a example set of metadata for the example graph.
 // Synonyms are used in the example visuaisation for filters and can also be
@@ -139,20 +142,27 @@ let findMatchingMetadataRow (vertex: Vert) mdata =
   List.tryFind (fun (row : ExampleInfo) -> row.Name.ToLower().Equals(vertex.Tag.ToLower())) mdata
 
 // Added by Samuel Smith n7581769.
+// Determines whether a given vertex matches a query based on metadata. Used
+// for the below function.
+let findFirstWithMetadata_filter (metadata : ExampleInfo list) (query : Query) (vertex : Vert) =
+    // First, try to find a matching row in the metadata.
+    // From Sean:
+    match findMatchingMetadataRow vertex metadata with
+    // If a metadata match was found, check the metadata for a query
+    // match.
+    | Some (row) -> SearchMetadata row query
+    // Otherwise return false.
+    | None -> false
+
+// Added by Samuel Smith n7581769.
 // Attempts to move to a vertex meeting the specified query conditions.
 // Only accepts a single query that specifies a property to search on and a
 // value that that property contains.
-let findFirstWithMetadata((graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>), zipper, (query : Query)) =
+let findFirstWithMetadata((graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>), zipper, (query : Query)) =
     // Get the metadata for the graph.
     let metadata = GenerateExampleMetadata()
-    // Create the function to test for true or false on a vertex.
-    let filterQuery (vertex : Vert) =
-        // First, try to find a matching row in the metadata.
-        match findMatchingMetadataRow vertex metadata with
-        // If a metadata match was found, check the metadata for a query match.
-        | Some (row) -> SearchMetadata row query
-        // Otherwise return false.
-        | None -> false
+    // Set up the function for filtering with the query.
+    let filterQuery = findFirstWithMetadata_filter metadata query
     // Call the movement function for a matching vertex.
     moveAlongFirstMatchingVertex(graph, !zipper, filterQuery)
 
@@ -160,7 +170,7 @@ let findFirstWithMetadata((graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert
 // Attempts to move to a vertex meeting the specified query conditions.
 // Accepts a list of queries (consisting of the property and the value they
 // should contain) and the logical operator to use with those queries.
-let findFirstWithMetadataMulti((graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>), zipper, (queryList : MultiQuery)) =
+let findFirstWithMetadataMulti((graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>), zipper, (queryList : MultiQuery)) =
     // Get the metadata for the graph.
     let metadata = GenerateExampleMetadata()
     // Create the function to test for true or false on a vertex.
@@ -194,11 +204,12 @@ type MoveOp =
     | NextMostConnected                 // Move to the vertex with the most outgoing connections connected to the current cursor (that has not already been visited).
     | Forward                           // Move to the vertex that was after the next move in the zipper's history. Does not erase the history.
     | GoToHistory of int                // Move to the vertex after the specified step in the zipper's history (or the starting vertex if given 0). Does not erase the history.
+    | NextHighestQueryScore of Query    // Move to the vertex whose edge connecting it to the current vertex has the highest (weighted) score, based on a given query.
 
 // Creates a new edge from the first specified vertex to the second with the
 // specified tag.
-let newEdge (a: Vert, b: Vert, t: string) : TaggedValueEdge<Vert, string, int> =
-    new TaggedValueEdge<Vert, string, int>(a,b,t,1)
+let newEdge (a: Vert, b: Vert, t: string) : TaggedValueEdge<Vert, string, float> =
+    new TaggedValueEdge<Vert, string, float>(a,b,t,DEFAULT_EDGE_VALUE)
 
 // Creates a new vertex with the specified tag and value.
 let newVert (tag: string, v: int): Vert =
@@ -214,16 +225,195 @@ let mkCompOp (c: CompOp): (Vert -> bool) =
         | EqualTo (Tag s) -> fun v -> v.Tag = s
         | EqualTo (Value vl) -> fun v -> v.Value = vl
 
+// Resets all edge values to the default of 1.0.
+let resetEdgeValues (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) =
+#if DEBUG
+    printfn "Resetting edge values..."
+#endif
+    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value <- DEFAULT_EDGE_VALUE) g.Edges
+#if DEBUG
+    printfn "Changed edge values."
+#endif
+
+// Calculates edge values for a given graph by how many connections the target
+// vertex has.
+let calculateEdgeValues_Connections (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) =
+#if DEBUG
+    printfn "Changing edge values to number of target's connections..."
+#endif
+    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value <- Seq.length (g.OutEdges(edge.Target))) g.Edges
+#if DEBUG
+    printfn "Changed edge values."
+#endif
+
+// Calculates a weighted edge value based on a condition and how many vertices
+// meet that condition a certain number of steps away.
+// (Note: some innacuracies may result thanks to the method used to avoid
+// counting vertices more than once.)
+let calculateEdgeValues_WeightedCondition (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition =
+#if DEBUG
+    printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
+#endif
+    // At present, I'm not sure how to keep a record of what vertices have been
+    // visited without using an array that can change outside the function.
+    let mutable visitedVerts = []
+
+    // Recursive function for looking through vertices up to a certain number
+    // of steps away, and adding up the score for all verticies that meet a
+    // given condition, weighting the score on how far the vertex is from the
+    // starting point.
+    // Ideally this should be in a seperate function since it's the same as the
+    // one in the below function, but it's relying on the mutable right now.
+    let rec scoring = fun (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition stepsToGo verts previousScore ->
+
+        // If there are no more steps to go, stop travelling down edges.
+        match stepsToGo with
+        | 0 -> (previousScore)
+        | _ -> (
+            Seq.fold (fun (previousScore : float) (vert : Vert) ->
+            // If this vertex has already been visited, don't go any further
+            // down this path.
+            if (Seq.contains(vert) visitedVerts) then
+                previousScore
+            // If this vertex meets the condition, add the weighted score to
+            // the accumulated score and add it as a visited vertex.
+            elif (condition vert) then
+                let scoreToAdd = ((1.0/(float numSteps)) * (float stepsToGo))
+                let currentScore = previousScore + scoreToAdd
+                visitedVerts <- List.append visitedVerts [vert]
+                scoring graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) currentScore
+            // Otherwise add it as a visited vertex but don't add to the score.
+            else
+                visitedVerts <- List.append visitedVerts [vert]
+                scoring graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) previousScore
+                ) previousScore verts
+            )
+
+    // For every vertex in the network...
+    Seq.iter (fun (vert : Vert) ->
+
+        // Iterate through the adjacent edges first. This is done here
+        // since the scores should be applied to these edges (they aren't
+        // actually done so yet in this test).
+        Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) ->
+            // Only proceed with calculating the score if this edge isn't
+            // a loop.
+            if (edge.Source.Equals(edge.Target)) then
+                ()
+            else
+                // Initialise the list of visited verticies for this starting
+                // point.
+                visitedVerts <- [vert]
+
+                // Check if the target vertex for the current edge meets
+                // the condition. If it does, start the score at 1.0,
+                // otherwise start it at zero.
+                let startingScore = match condition edge.Target with
+                                    | true -> 1.0
+                                    | _ -> 0.0
+
+                // Start the recursion for subsequent edges after this one.
+                let score = scoring g numSteps condition (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (g.OutEdges(edge.Target))) startingScore
+                edge.Value <- score
+                ()
+            ) (g.OutEdges(vert))
+        ()
+    ) g.Vertices
+#if DEBUG
+    printfn "Changed edge values."
+#endif
+    ()
+
+// Calculates a weighted edge value based on a condition and how many vertices
+// meet that condition a certain number of steps away.
+// (Note: some innacuracies may result thanks to the method used to avoid
+// counting vertices more than once.)
+// This version only calculates for a specified origin vertex.
+let calculateEdgeValues_WeightedConditionSingle (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition (origin : Vert) =
+#if DEBUG
+    printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
+#endif
+    // At present, I'm not sure how to keep a record of what vertices have been
+    // visited without using an array that can change outside the function.
+    let mutable visitedVerts = []
+
+    // Recursive function for looking through vertices up to a certain number
+    // of steps away, and adding up the score for all verticies that meet a
+    // given condition, weighting the score on how far the vertex is from the
+    // starting point.
+    // Ideally this should be in a seperate function since it's the same as the
+    // one in the above function, but it's relying on the mutable right now.
+    let rec scoring = fun (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition stepsToGo verts previousScore ->
+
+        // If there are no more steps to go, stop travelling down edges.
+        match stepsToGo with
+        | 0 -> (previousScore)
+        | _ -> (
+            Seq.fold (fun (previousScore : float) (vert : Vert) ->
+            // If this vertex has already been visited, don't go any further
+            // down this path.
+            if (Seq.contains(vert) visitedVerts) then
+                previousScore
+            // If this vertex meets the condition, add the weighted score to
+            // the accumulated score and add it as a visited vertex.
+            elif (condition vert) then
+                let scoreToAdd = ((1.0/(float numSteps)) * (float stepsToGo))
+                let currentScore = previousScore + scoreToAdd
+                visitedVerts <- List.append visitedVerts [vert]
+                scoring graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) currentScore
+            // Otherwise add it as a visited vertex but don't add to the score.
+            else
+                visitedVerts <- List.append visitedVerts [vert]
+                scoring graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) previousScore
+                ) previousScore verts
+            )
+
+    // For the specified vertex...
+    let vert = origin
+
+    // Iterate through the adjacent edges first. This is done here
+    // since the scores should be applied to these edges (they aren't
+    // actually done so yet in this test).
+    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) ->
+        // Only proceed with calculating the score if this edge isn't
+        // a loop.
+        if (edge.Source.Equals(edge.Target)) then
+            ()
+        else
+            // Initialise the list of visited verticies for this starting
+            // point.
+            visitedVerts <- [vert]
+
+            // Check if the target vertex for the current edge meets
+            // the condition. If it does, start the score at 1.0,
+            // otherwise start it at zero.
+            let startingScore = match condition edge.Target with
+                                | true -> 1.0
+                                | _ -> 0.0
+
+            // Start the recursion for subsequent edges after this one.
+            let score = scoring g numSteps condition (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (g.OutEdges(edge.Target))) startingScore
+            edge.Value <- score
+            ()
+        ) (g.OutEdges(vert))
+#if DEBUG
+    printfn "Changed edge values."
+#endif
+    ()
+
 // Added by Samuel Smith n7581769.
 // Attempts to move to the connected vertex that has the most outgoing
 // connections.
-let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>), z) =
+let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>), z) =
+
+    // Calculate the edge values for this operation.
+    calculateEdgeValues_Connections(g)
 
     // Sort the list of edges connected to the current vertex by how many
     // connections their targets have.
-    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedValueEdge<Vert,string,int>) -> edge.Value) (g.OutEdges((!z).Cursor))
+    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value) (g.OutEdges((!z).Cursor))
     #if DEBUG
-    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,int>) -> printfn "Vertex %s has %i targets" edge.Target.Tag edge.Value) sortedEdges
+    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Vertex %s has %f targets" edge.Target.Tag edge.Value) sortedEdges
     Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((!z).HistoryIndex + 1) (!z).VertHistory)
     #endif
 
@@ -239,16 +429,69 @@ let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,str
     // next most connected vertex.
     let targetEdge =
         // Find a vertex that's not already in the history.
-        match Seq.tryFind (fun (sortedEdge : TaggedValueEdge<Vert,string,int>) -> not (checkInHistory sortedEdge.Target)) sortedEdges with
+        match Seq.tryFind (fun (sortedEdge : TaggedValueEdge<Vert,string,float>) -> not (checkInHistory sortedEdge.Target)) sortedEdges with
         | Some (result) -> result
-        | None -> new TaggedValueEdge<Vert, string, int>(newVert("null_1", -1),newVert("null_2", -2),"null",-1) // This is beccause each side needs to return a value.
+        | None -> new TaggedValueEdge<Vert, string, float>(newVert("null_1", -1),newVert("null_2", -2),"null",-DEFAULT_EDGE_VALUE) // This is beccause each side needs to return a value.
 
     // Create the function to test for true or false on an edge.
-    let filterQuery (edge : TaggedValueEdge<Vert,string,int>) =
+    let filterQuery (edge : TaggedValueEdge<Vert,string,float>) =
         edge.Equals(targetEdge)
 
     // Call the movement function for a matching edge.
-    moveAlongFirstMatchingEdge(g, !z, filterQuery)
+    let result = moveAlongFirstMatchingEdge(g, !z, filterQuery)
+
+    // Reset the edge values.
+    resetEdgeValues(g)
+
+    result
+
+// Added by Samuel Smith n7581769.
+// Attempts to move to a connected vertex that is "most relevant" to a
+// particular query. Essentially, a weighted score is calculated for each
+// outgoing edge for four steps away from the initial vertex, with higher
+// weightings for closer vertices to the starting point (that fulfil the
+// query condition), and the zipper will travel down the edge that has the
+// greatest score.
+let findNextHighestQueryScore((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>), z, condition) =
+
+    // Calculate the edge values for this operation.
+    calculateEdgeValues_WeightedConditionSingle g 4 condition (!z).Cursor
+
+    // Sort the list of edges connected to the current vertex by their score.
+    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value) (g.OutEdges((!z).Cursor))
+    #if DEBUG
+    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Edge to vertex %s has a score of %f" edge.Target.Tag edge.Value) sortedEdges
+    Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((!z).HistoryIndex + 1) (!z).VertHistory)
+    #endif
+
+    // Function for checking if a vertex is in the history; used in the
+    // function below.
+    let checkInHistory (vertex : Vert) =
+        match Seq.tryFind(fun historyVert -> vertex.Equals(historyVert)) (last ((!z).HistoryIndex + 1) (!z).VertHistory) with
+        | Some (result) -> true
+        | None -> false
+
+    // Function to check for the first edge in the sorted list whose target
+    // isn't in the history. This will be the edge that is connected to the
+    // next most connected vertex.
+    let targetEdge =
+        // Find a vertex that's not already in the history.
+        // Also check that the score does not equal zero.
+        match Seq.tryFind (fun (sortedEdge : TaggedValueEdge<Vert,string,float>) -> not (checkInHistory sortedEdge.Target) && sortedEdge.Value > 0.0) sortedEdges with
+        | Some (result) -> result
+        | None -> new TaggedValueEdge<Vert, string, float>(newVert("null_1", -1),newVert("null_2", -2),"null",-DEFAULT_EDGE_VALUE) // This is beccause each side needs to return a value.
+
+    // Create the function to test for true or false on an edge.
+    let filterQuery (edge : TaggedValueEdge<Vert,string,float>) =
+        edge.Equals(targetEdge)
+
+    // Call the movement function for a matching edge.
+    let result = moveAlongFirstMatchingEdge(g, !z, filterQuery)
+
+    // Reset the edge values.
+    resetEdgeValues(g)
+
+    result
 
 // Handles a move request. Attempts to complete the request, failing with a 404
 // response if the operation did not return a valid vertex.
@@ -275,6 +518,7 @@ let f g z rq =
                     | NextMostConnected -> findNextMostConnected (g, z)
                     | Forward -> Some(moveForward !z)
                     | GoToHistory i -> Some(moveToHistoryIndex !z i)
+                    | NextHighestQueryScore query -> findNextHighestQueryScore (g, z, findFirstWithMetadata_filter (GenerateExampleMetadata()) query)
 
     // Attempt to complete the move operation.
     match moveRes with
@@ -289,18 +533,18 @@ let whereami z _rq = OK (Json.serialize (!z).Cursor)
 
 // Routes added by Samuel Smith n7581769.
 // Returns all edges connected to the current vertex.
-let connectedRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>) z _request =
+let connectedRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) z _request =
     //printfn "Received wheretogo operation."
     let edges = g.OutEdges((!z).Cursor)
-    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,int>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
+    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
     OK (Json.serialize { Edges = Seq.toList edgesMap })
 
 // Returns the current vertex and all edges connected to it.
-let getGraphRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>) z _request =
+let getGraphRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) z _request =
     printfn "Received getGraph operation."
     let currentVertex = (!z).Cursor
-    let edges = Seq.filter (fun (item : TaggedValueEdge<Vert,string,int>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) g.Edges
-    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,int>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
+    let edges = Seq.filter (fun (item : TaggedValueEdge<Vert,string,float>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) g.Edges
+    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
     OK (Json.serialize { Vertex = (!z).Cursor; Edges = Seq.toList edgesMap; History = (!z).VertHistory; HistoryIndex = (!z).HistoryIndex })
 
 // Added by Samuel Smith n7581769.
@@ -317,14 +561,14 @@ let getMetadataRoute _request =
     OK (Json.serialize (GenerateExampleMetadata()))
 
 // Returns all the vertices in the current graph.
-let getVerticesRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>) _request =
+let getVerticesRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) _request =
     printfn "Received getVertices operation."
     OK (Json.serialize (Seq.toList g.Vertices))
 
 // Returns all the edges in the current graph.
-let getEdgesRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>>) _request =
+let getEdgesRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) _request =
     printfn "Received getEdges operation."
-    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,int>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) g.Edges
+    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) g.Edges
     OK (Json.serialize (Seq.toList edgesMap))
 
 // CORS handlers added by Samuel Smith n7581769.
@@ -389,7 +633,7 @@ let app g z =
 // Changes by Samuel Smith n7581769:
 // - No longer fails if the edge already exists; and
 // - Changed name to tryAddEdge.
-let tryAddEdge (g: AppGraph, e: TaggedValueEdge<Vert,string,int>) =
+let tryAddEdge (g: AppGraph, e: TaggedValueEdge<Vert,string,float>) =
     let success = g.AddEdge(e)
     // If the edge add operation returned false (i.e. the edge wasn't added)
     // then check if the edge is in the graph; this means that the edge was
@@ -425,7 +669,7 @@ let tryAddVertex (g: AppGraph, v: Vert) =
 
 // Generates the graph for this example.
 let generateFreshGraph: AppGraph =
-    let mutable g = new BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,int>> ()
+    let mutable g = new BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>> ()
 
     // Create the vertices for the graph.
     let vzero = newVert("zero", 0)
@@ -450,7 +694,7 @@ let generateFreshGraph: AppGraph =
 
     // Go through all the edges in the graph, and set their value to the number
     // of connected edges of the target vertex.
-    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,int>) -> edge.Value <- Seq.length (g.OutEdges(edge.Target))) g.Edges
+    //calculateEdgeValues_Connections(g)
 
     // Return the completed graph.
     g
@@ -466,10 +710,14 @@ let generateFreshGraph: AppGraph =
 // $ curl -X POST -vvv --data '{"moveOp":"MetadataSearchMulti","moveInputs":{"Operation":"AND","Queries":[{"Property":"Synonyms","Value":"child"},{"Property":"Name","Value":"two"}]}}' http://localhost:8080/move
 // MetadataSearchMulti (OR):
 // $ curl -X POST -vvv --data '{"moveOp":"MetadataSearchMulti","moveInputs":{"Operation":"OR","Queries":[{"Property":"Synonyms","Value":"child"},{"Property":"Name","Value":"two"}]}}' http://localhost:8080/move
+// NextMostConnected:
+// $ curl -X POST -vvv --data '{"moveOp":"NextMostConnected","moveInputs":[]}' http://localhost:8080/move
 // Forward:
 // $ curl -X POST -vvv --data '{"moveOp":"Forward","moveInputs":[]}' http://localhost:8080/move
 // GoToHistory:
 // $ curl -X POST -vvv --data '{"moveOp":"GoToHistory","moveInputs":0}' http://localhost:8080/move
+// NextHighestQueryScore:
+// $ curl -X POST -vvv --data '{"moveOp":"NextMostConnected","moveInputs":{"Property":"Synonyms","Value":"child"}}' http://localhost:8080/move
 
 // Example curl commands (Windows):
 // ToVertex:
@@ -488,6 +736,8 @@ let generateFreshGraph: AppGraph =
 // curl -X POST -vvv --data {\"moveOp\":\"Forward\",\"moveInputs\":[]} http://localhost:8080/move
 // GoToHistory:
 // curl -X POST -vvv --data {\"moveOp\":\"GoToHistory\",\"moveInputs\":0} http://localhost:8080/move
+// NextHighestQueryScore:
+// curl -X POST -vvv --data {\"moveOp\":\"NextMostConnected\",\"moveInputs\":{\"Property\":\"Synonyms\",\"Value\":\"child\"}}} http://localhost:8080/move
 [<EntryPoint>]
 // Main function for the example serer. Creates a graph and zipper and uses
 // them to start the web server with the specified configuration.

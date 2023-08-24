@@ -38,8 +38,10 @@
         <button id="jumpToButton">Jump to node</button>
 
         <!-- Button for moving to the connected vertex that has the most
-        connections itself (and we haven't already been to). -->
-        <button id="nextMostConnectedButton">Move to most connected neighbour</button>
+        connections itself (and we haven't already been to).
+        If there's an active query, searches using a weighted score based on
+        that instead. -->
+        <button id="moveByScoreButton">Move to most connected neighbour</button>
 
         <!-- Make two columns for the main divs of the page. -->
         <div class="gridDiv">

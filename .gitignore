@@ -456,3 +456,4 @@ $RECYCLE.BIN/
 ## Ignoring some of Sam's additions
 graph-dsl.sln
 ExampleServer/*
+*.bak
