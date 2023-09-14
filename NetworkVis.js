@@ -1,12 +1,8 @@
 window.onload = function() {
 
-    // Should be true if there's an automated demo running.
-    let demo = false;
-
     // Buttons.
     let backButton = document.getElementById('backButton');
     let filterButton = document.getElementById('filterButton');
-    let autoButton = document.getElementById('autoButton');
     let historyText = document.getElementById('historyText');
     let jumpToSelect = document.getElementById('jumpToSelect');
     let jumpToButton = document.getElementById('jumpToButton');
@@ -77,69 +73,48 @@ window.onload = function() {
     // Function for getting synonyms for a TF.
     let getSynonyms = function (name, data) {
 
-        // Try to find a row in the metadata that has the supplied name.
-        let row = data.find((item) => item.Name.toLowerCase() === name.toLowerCase());
+        // Check that we did receive an array of data.
+        if (Array.isArray(data)) {
+            
+            // Try to find a row in the metadata that has the supplied name.
+            let row = data.find((item) => item.Name.toLowerCase() === name.toLowerCase());
 
-        // Return the list of synonyms if it is found.
-        if (row !== undefined) {
-            return row.Synonyms;
+            // Return the list of synonyms if it is found.
+            if (row !== undefined && row.Synonyms !== undefined) {
+                return row.Synonyms;
+            }
+        }
 
         // Otherwise return an empty list.
-        } else {
-            return [""];
-        }
+        return [""];
     }
 
     // Function for getting all metadata for a TF and putting it into a string
     // to be displayed in the graph popups.
     let getMetadataString = function (name, data) {
 
-        // Try to find a row in the metadata that has the supplied name.
-        let row = data.find((item) => item.Name.toLowerCase() === name.toLowerCase());
+        // Check that we did receive an array of data.
+        if (Array.isArray(data)) {
+            // Try to find a row in the metadata that has the supplied name.
+            let row = data.find((item) => item.Name.toLowerCase() === name.toLowerCase());
 
-        // Return the metadata to display if it is found.
-        if (row !== undefined) {
-            let lines = [];
-            lines.push(`Identifier: ${row.Id}`);
-            lines.push(`Name: ${row.Name}`);
-            lines.push('Synonyms:');
-            for (text of row.Synonyms) {
-                lines.push(`- ${text}`);
+            // Return the metadata to display if it is found.
+            if (row !== undefined) {
+                let lines = [];
+                lines.push(`Identifier: ${row.Id}`);
+                lines.push(`Name: ${row.Name}`);
+                if (row.Synonyms !== undefined) {
+                    lines.push('Synonyms:');
+                    for (text of row.Synonyms) {
+                        lines.push(`- ${text}`);
+                    }
+                }
+                return lines.join('\n');
             }
-            if (row.GeneCoding !== undefined) {
-                lines.push(`Gene Coding: ${row.GeneCoding}`);
-                //lines.push(`Active Conformations: ${row.ActiveConformations}`);
-                //lines.push(`Inactive Conformations: ${row.InactiveConformations}`);
-                //lines.push(`Active Conformations Synonyms: ${row.ActiveConformationsSynonyms}`);
-                //lines.push(`Inactive Conformations Synonyms: ${row.InactiveConformationsSynonyms}`);
-                //lines.push(`Active Conformations Effector Names: ${row.ActiveConformationsEffectorName}`);
-                //lines.push(`Inactive Conformations Effector Names: ${row.InactiveConformationsEffectorName}`);
-                //lines.push(`Active Conformations Effector Synonyms: ${row.ActiveConformationsEffectorSynonyms}`);
-                //lines.push(`Inactive Conformations Effector Synonyms: ${row.InactiveConformationsEffectorSynonyms}`);
-                lines.push(`Symmetry: ${row.Symmetry}`);
-                lines.push(`Family: ${row.Family}`);
-                lines.push(`Connectivity Class: ${row.ConnectivityClass}`);
-                lines.push(`Sensing Class: ${row.SensingClass}`);
-                lines.push('Confirmation Evidence:');
-                for (text of row.ConfirmationEvidence) {
-                    lines.push(`- ${text}`);
-                }
-                lines.push('Additive Evidence:');
-                for (text of row.AdditiveEvidence) {
-                    lines.push(`- ${text}`);
-                }
-                lines.push(`Confidence Level: ${row.ConfidenceLevel}`);
-                lines.push('Comfirmation reference identifiers (PMID):');
-                for (text of row.Pmids) {
-                    lines.push(`- ${text}`);
-                }
-            }
-            return lines.join('\n');
+        }
 
         // Otherwise return a placeholder string.
-        } else {
-            return 'No metadata available';
-        }
+        return 'No metadata available';
     }
 
     // Function for filtering visible nodes.
@@ -277,16 +252,6 @@ window.onload = function() {
         currentCursorId = sourceData.Vertex.Value;
         currentCursor = sourceData.Vertex.Tag;
 
-        // The button for the Crp traversal example should only work if
-        // we're actually on Crp.
-        if (currentCursor === "Crp") {
-            document.getElementById('autoButton').removeAttribute("disabled");
-            autoButton.setAttribute("style", "display: inherit");
-        } else {
-            document.getElementById('autoButton').setAttribute("disabled", "disabled");
-            autoButton.setAttribute("style", "display: none");
-        }
-
         // Start collecting the data for nodes.
         // Create the starting node first from the current cursor position.
         // The basic node object consists of an id and a label.
@@ -319,6 +284,7 @@ window.onload = function() {
                 currentEdge.color = 'red'
             } else {
                 currentEdge.color = 'green'
+                currentEdge.label = edge.Value.toString()
             }
             edgeData.push(currentEdge);
         }
@@ -342,6 +308,7 @@ window.onload = function() {
         // nodes and edges.
         let options = {
             edges: {
+                font: { align: 'middle' },
                 arrows: 'to', // Show arrows pointing to the "to" node.
                 smooth: false // Make edges straight lines if possible.
             },
@@ -426,25 +393,21 @@ window.onload = function() {
             jumpToSelect.innerHTML = selectOptions.join('\n');
         }
 
-        // Apply filter if the user has entered a value and this isn't
-        // a demo.
-        if (demo === false) {
-            let filterInput = document.getElementById('filterInput');
-            let filterText = filterInput.value;
-            applyFilter(filterText);
-        }
+        // Apply filter if the user has entered a value.
+        let filterInput = document.getElementById('filterInput');
+        let filterText = filterInput.value;
+        applyFilter(filterText);
 
         // Clicking on a main network node.
         mainNetwork.on('click', function(properties) {
-            if (demo === true) return;
 
             // vis-network provides a properties object to find what elements
             // were involved in the event. This gives a list of IDs for the
             // nodes.
-            let ids = properties.nodes;
+            let nodeIds = properties.nodes;
 
             // Get the node objects involved in the click event.
-            let clickedNodes = nodes.get(ids);
+            let clickedNodes = nodes.get(nodeIds);
 
             // If there is at least one node clicked on...
             if (clickedNodes.length > 0) {
@@ -471,6 +434,13 @@ window.onload = function() {
                 } else {
                     postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ToVertex','moveInputs':{'Tag':nextNode.label,'Value':nextNode.id}});
                 }
+            }
+
+            // Also deselect any selected edges for now.
+            let edgeIds = properties.edges;
+            let clickedEdges = edges.get(edgeIds);
+            if (clickedEdges.length > 0) {
+                mainNetwork.unselectAll();
             }
         });
 
@@ -510,7 +480,6 @@ window.onload = function() {
                 itemLink.setAttribute('href', '#');
                 let currentI = i;
                 itemLink.addEventListener('click', function (properties) {
-                    if (demo === true) return;
                     postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'GoToHistory','moveInputs':currentI});
                 });
                 itemLink.innerHTML = entry;
@@ -558,13 +527,11 @@ window.onload = function() {
 
     // Clicking on the back button.
     backButton.addEventListener('click', function() {
-        if (demo === true) return;
         postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'Back','moveInputs':[]});
     });
 
     // Clicking on the forward button.
     forwardButton.addEventListener('click', function() {
-        if (demo === true) return;
         postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'Forward','moveInputs':[]});
     });
 
@@ -572,7 +539,6 @@ window.onload = function() {
     // It should show only those targets that have the text in their
     // synonyms.
     filterButton.addEventListener('click', function() {
-        if (demo === true) return;
         let filterInput = document.getElementById('filterInput');
         let filterText = filterInput.value;
         applyFilter(filterText);
@@ -580,7 +546,6 @@ window.onload = function() {
 
     // Clicking on the "Jump to node" button.
     jumpToButton.addEventListener('click', function() {
-        if (demo === true) return;
 
         // Check if any options are selected in the Jump to dropdown.
         let selectedNodes = jumpToSelect.selectedOptions;
@@ -601,147 +566,10 @@ window.onload = function() {
 
     // Clicking the "Move to most connected neighbour" button.
     moveByScoreButton.addEventListener('click', function() {
-        if (demo === true) return;
         if (currentFilterText.length < 1) {
             postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'NextMostConnected','moveInputs':[]});
         } else {
             postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'NextHighestQueryScore','moveInputs':{'Property':'Synonyms','Value':currentFilterText}});
-        }
-    });
-
-    // Button for demonstrating a traversal with Crp as the starting
-    // point.
-    autoButton.addEventListener('click', function () {
-        let autoText = document.getElementById('autoText');
-
-        // Don't do anything if a demo is already running (it shouldn't
-        // happen anyway, though).
-        if (demo === true) return;
-
-        // Interval between moves.
-        const interval = 3000;
-
-        // Turns the buttons back on when we're done.
-        const resetButtons = function () {
-            backButton.removeAttribute("disabled");
-            filterButton.removeAttribute("disabled");
-            jumpToSelect.removeAttribute("disabled");
-            jumpToButton.removeAttribute("disabled");
-            moveByScoreButton.removeAttribute("disabled");
-            forwardButton.removeAttribute("disabled");
-
-            // Don't turn the auto button back on if we had an error
-            // and aren't at Crp.
-            if (currentCursor === "Crp") {
-                autoButton.removeAttribute("disabled");
-                autoButton.setAttribute("style", "display: inherit");
-            }
-
-            // Hide any status text.
-            autoText.innerHTML = "";
-            autoText.setAttribute("style", "display: none");
-        };
-
-        // Function for moving forward.
-        const forwardMove = function (id, label) {
-            postJSON('http://localhost:8080/move', function (err, data) {
-                if (err) {
-                    alert('Failed to move graph zipper.');
-                    demo = false;
-                    resetButtons();
-                } else {
-                    getJSON('http://localhost:8080/getGraph', graphRequestHandler);
-                }
-            // Create a "ToVertex" MoveOp object to send to the server.
-            }, {'moveOp':'ToVertex','moveInputs':{'Tag':label,'Value':id}});
-        };
-
-        // Function for moving backward.
-        const backwardMove = function () {
-            postJSON('http://localhost:8080/move', function (err, data) {
-                if (err) {
-                    alert('Failed to move graph zipper.');
-                    demo = false;
-                    resetButtons();
-                } else {
-                    getJSON('http://localhost:8080/getGraph', graphRequestHandler);
-                }
-            // Create a "Back" MoveOp object to send to the server.
-            }, {'moveOp':'Back','moveInputs':[]});
-        };
-
-        // If we're not already running a demo...
-        if (demo !== true) {
-
-            // Disable the buttons and set that we're running a demo.
-            backButton.setAttribute("disabled", "disabled");
-            filterButton.setAttribute("disabled", "disabled");
-            autoButton.setAttribute("disabled", "disabled");
-            jumpToSelect.setAttribute("disabled", "disabled");
-            jumpToButton.setAttribute("disabled", "disabled");
-            autoButton.setAttribute("style", "display: none");
-            moveByScoreButton.setAttribute("disabled", "disabled");
-            forwardButton.setAttribute("disabled", "disabled");
-            demo = true;
-
-            // Show status text.
-            autoText.innerHTML = `Moving to Fis (right-most node) in ${interval/1000} seconds...`;
-            autoText.removeAttribute("style");
-
-            // Clear any current filter.
-            applyFilter();
-
-            try {
-
-                // Move to Fis.
-                setTimeout(function () {
-                    if (demo === false) return;
-                    forwardMove(0, 'Fis');
-                    autoText.innerHTML = `Moving to NtrC (top-top-right node) in ${interval/1000} seconds...`;
-                }, interval*1);
-
-                // Move to NtrC.
-                setTimeout(function () {
-                    if (demo === false) return;
-                    forwardMove(13, 'NtrC');
-                    autoText.innerHTML = `Moving to Cbl (left-most node) in ${interval/1000} seconds...`;
-                }, interval*2);
-
-                // Move to Cbl.
-                setTimeout(function () {
-                    if (demo === false) return;
-                    forwardMove(119, 'Cbl');
-                    autoText.innerHTML = `Moving back to NtrC (right-most node) in ${interval/1000} seconds...`;
-                }, interval*3);
-
-                // Move back to NtrC.
-                setTimeout(function () {
-                    if (demo === false) return;
-                    backwardMove();
-                    autoText.innerHTML = `Moving back to Fis (right-most node) in ${interval/1000} seconds...`;
-                }, interval*4);
-
-                // Move back to Fis.
-                setTimeout(function () {
-                    if (demo === false) return;
-                    backwardMove();
-                    autoText.innerHTML = `Moving back to Crp (right-most node) in ${interval/1000} seconds...`;
-                }, interval*5);
-
-                // Move back to Crp.
-                setTimeout(function () {
-                    if (demo === false) return;
-                    backwardMove();
-                    demo = false;
-                    resetButtons();
-                }, interval*6);
-
-            // Reset things if there's any errors caught.
-            } catch (error) {
-                demo = false;
-                resetButtons();
-                alert(`Could not complete traversal example:\n${error.message}.`);
-            }
         }
     });
 
@@ -865,15 +693,14 @@ window.onload = function() {
 
         // Clicking on a overview node.
         overviewNetwork.on('click', function(properties) {
-            if (demo === true) return;
 
             // vis-network provides a properties object to find what elements
             // were involved in the event. This gives a list of IDs for the
             // nodes.
-            let ids = properties.nodes;
+            let nodeIds = properties.nodes;
 
             // Get the node objects involved in the click event.
-            let clickedNodes = nodes.get(ids);
+            let clickedNodes = nodes.get(nodeIds);
 
             // If there is at least one node clicked on...
             if (clickedNodes.length > 0) {
@@ -896,6 +723,13 @@ window.onload = function() {
                 // Always do a force move since we don't care whether there's a
                 // connection on the graph between current and new node.
                 postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'ForceToVertex','moveInputs':{'Tag':nextNode.label,'Value':nextNode.id}});
+            }
+
+            // Also deselect any selected edges for now.
+            let edgeIds = properties.edges;
+            let clickedEdges = edges.get(edgeIds);
+            if (clickedEdges.length > 0) {
+                mainNetwork.unselectAll();
             }
         });
 

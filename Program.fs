@@ -42,6 +42,7 @@ type MiniJsonEdge = {
     Start : Vert
     End : Vert
     Tag : string
+    Value : float
 }
 
 // A record type with a list of the above edge types to show what edges are
@@ -229,10 +230,15 @@ let mkCompOp (c: CompOp): (Vert -> bool) =
 let resetEdgeValues (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) =
 #if DEBUG
     printfn "Resetting edge values..."
+    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
 #endif
     Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value <- DEFAULT_EDGE_VALUE) g.Edges
 #if DEBUG
+    stopWatch.Stop()
     printfn "Changed edge values."
+    let ms = stopWatch.Elapsed.TotalMilliseconds
+    printfn "Milliseconds elapsed: %f" ms
+    ms
 #endif
 
 // Calculates edge values for a given graph by how many connections the target
@@ -240,31 +246,22 @@ let resetEdgeValues (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,fl
 let calculateEdgeValues_Connections (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) =
 #if DEBUG
     printfn "Changing edge values to number of target's connections..."
+    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
 #endif
     Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value <- Seq.length (g.OutEdges(edge.Target))) g.Edges
 #if DEBUG
+    stopWatch.Stop()
     printfn "Changed edge values."
+    let ms = stopWatch.Elapsed.TotalMilliseconds
+    printfn "Milliseconds elapsed: %f" ms
+    ms
 #endif
 
-// Calculates a weighted edge value based on a condition and how many vertices
-// meet that condition a certain number of steps away.
-// (Note: some innacuracies may result thanks to the method used to avoid
-// counting vertices more than once.)
-let calculateEdgeValues_WeightedCondition (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition =
-#if DEBUG
-    printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
-#endif
-    // At present, I'm not sure how to keep a record of what vertices have been
-    // visited without using an array that can change outside the function.
-    let mutable visitedVerts = []
-
-    // Recursive function for looking through vertices up to a certain number
-    // of steps away, and adding up the score for all verticies that meet a
-    // given condition, weighting the score on how far the vertex is from the
-    // starting point.
-    // Ideally this should be in a seperate function since it's the same as the
-    // one in the below function, but it's relying on the mutable right now.
-    let rec scoring = fun (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition stepsToGo verts previousScore ->
+// Recursive function for looking through vertices up to a certain number
+// of steps away, and adding up the score for all verticies based on their
+// connectedness, weighting the score on how far the vertex is from the
+// starting point.
+let rec scoring_ConnectionsWeighted = fun (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps stepsToGo verts previousScore (visitedVerts : Vert list ref) ->
 
         // If there are no more steps to go, stop travelling down edges.
         match stepsToGo with
@@ -273,21 +270,160 @@ let calculateEdgeValues_WeightedCondition (g : BidirectionalGraph<Vert, TaggedVa
             Seq.fold (fun (previousScore : float) (vert : Vert) ->
             // If this vertex has already been visited, don't go any further
             // down this path.
-            if (Seq.contains(vert) visitedVerts) then
+            if (Seq.contains(vert) (!visitedVerts)) then
                 previousScore
-            // If this vertex meets the condition, add the weighted score to
-            // the accumulated score and add it as a visited vertex.
-            elif (condition vert) then
-                let scoreToAdd = ((1.0/(float numSteps)) * (float stepsToGo))
-                let currentScore = previousScore + scoreToAdd
-                visitedVerts <- List.append visitedVerts [vert]
-                scoring graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) currentScore
-            // Otherwise add it as a visited vertex but don't add to the score.
+            // Otherwise add to the score based on the vertex's connectedness.
             else
-                visitedVerts <- List.append visitedVerts [vert]
-                scoring graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) previousScore
-                ) previousScore verts
-            )
+                let scoreToAdd = (1.0/(float numSteps)) * float (Seq.length (graph.OutEdges(vert)))
+                let currentScore = previousScore + scoreToAdd
+                visitedVerts := List.append (!visitedVerts) [vert]
+                scoring_ConnectionsWeighted graph numSteps (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) currentScore visitedVerts
+            ) previousScore verts
+        )
+
+// Calculates a weighted edge value based on connectedness, considering
+// vertices that are a certain number of steps away.
+// (Note: some innacuracies may result thanks to the method used to avoid
+// counting vertices more than once.)
+let calculateEdgeValues_ConnectionsWeighted (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps =
+#if DEBUG
+    printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
+    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
+#endif
+    // At present, I'm not sure how to keep a record of what vertices have been
+    // visited without using an array that can change outside the function.
+    let mutable visitedVerts = []
+
+    // Recursive function for looking through vertices up to a certain number
+    // of steps away, and adding up the score for all verticies based on their
+    // connectedness, weighting the score on how far the vertex is from the
+    // starting point.
+
+    // For every vertex in the network...
+    Seq.iter (fun (vert : Vert) ->
+
+        // Iterate through the adjacent edges first. This is done here
+        // since the scores should be applied to these edges (they aren't
+        // actually done so yet in this test).
+        Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) ->
+            // Only proceed with calculating the score if this edge isn't
+            // a loop.
+            if (edge.Source.Equals(edge.Target)) then
+                ()
+            else
+                // Initialise the list of visited verticies for this starting
+                // point.
+                visitedVerts <- [vert]
+
+                // Get the connectedness of the current vertex.
+                let startingScore = float (Seq.length (g.OutEdges(edge.Target)))
+
+                // Start the recursion for subsequent edges after this one.
+                let score = scoring_ConnectionsWeighted g numSteps (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (g.OutEdges(edge.Target))) startingScore (ref visitedVerts)
+                edge.Value <- score
+                ()
+            ) (g.OutEdges(vert))
+        ()
+    ) g.Vertices
+#if DEBUG
+    stopWatch.Stop()
+    printfn "Changed edge values."
+    let ms = stopWatch.Elapsed.TotalMilliseconds
+    printfn "Milliseconds elapsed: %f" ms
+    ms
+#else
+    ()
+#endif
+
+// Calculates a weighted edge value based on connectedness, considering
+// vertices that are a certain number of steps away.
+// (Note: some innacuracies may result thanks to the method used to avoid
+// counting vertices more than once.)
+// This version only calculates for a specified origin vertex.
+let calculateEdgeValues_ConnectionsWeightedSingle (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps (origin : Vert) =
+#if DEBUG
+    printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
+    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
+#endif
+    // At present, I'm not sure how to keep a record of what vertices have been
+    // visited without using an array that can change outside the function.
+    let mutable visitedVerts = []
+
+    // For the specified vertex...
+    let vert = origin
+
+    // Iterate through the adjacent edges first. This is done here
+    // since the scores should be applied to these edges (they aren't
+    // actually done so yet in this test).
+    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) ->
+        // Only proceed with calculating the score if this edge isn't
+        // a loop.
+        if (edge.Source.Equals(edge.Target)) then
+            ()
+        else
+            // Initialise the list of visited verticies for this starting
+            // point.
+            visitedVerts <- [vert]
+
+            // Get the connectedness of the current vertex.
+            let startingScore = float (Seq.length (g.OutEdges(edge.Target)))
+
+            // Start the recursion for subsequent edges after this one.
+            let score = scoring_ConnectionsWeighted g numSteps (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (g.OutEdges(edge.Target))) startingScore (ref visitedVerts)
+            edge.Value <- score
+            ()
+        ) (g.OutEdges(vert))
+#if DEBUG
+    stopWatch.Stop()
+    printfn "Changed edge values."
+    let ms = stopWatch.Elapsed.TotalMilliseconds
+    printfn "Milliseconds elapsed: %f" ms
+    ms
+#else
+    ()
+#endif
+
+// Recursive function for looking through vertices up to a certain number
+// of steps away, and adding up the score for all verticies that meet a
+// given condition, weighting the score on how far the vertex is from the
+// starting point.
+let rec scoring_ConditionWeighted = fun (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition stepsToGo verts previousScore (visitedVerts : Vert list ref) ->
+
+    // If there are no more steps to go, stop travelling down edges.
+    match stepsToGo with
+    | 0 -> (previousScore)
+    | _ -> (
+        Seq.fold (fun (previousScore : float) (vert : Vert) ->
+        // If this vertex has already been visited, don't go any further
+        // down this path.
+        if (Seq.contains(vert) (!visitedVerts)) then
+            previousScore
+        // If this vertex meets the condition, add the weighted score to
+        // the accumulated score and add it as a visited vertex.
+        elif (condition vert) then
+            let scoreToAdd = ((1.0/(float numSteps)) * (float stepsToGo))
+            let currentScore = previousScore + scoreToAdd
+            visitedVerts := List.append (!visitedVerts) [vert]
+            scoring_ConditionWeighted graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) currentScore visitedVerts
+        // Otherwise add it as a visited vertex but don't add to the score.
+        else
+            visitedVerts := List.append (!visitedVerts) [vert]
+            scoring_ConditionWeighted graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) previousScore visitedVerts
+            ) previousScore verts
+        )
+
+// Calculates a weighted edge value based on a condition and how many vertices
+// meet that condition a certain number of steps away.
+// (Note: some innacuracies may result thanks to the method used to avoid
+// counting vertices more than once.)
+let calculateEdgeValues_ConditionWeighted (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition =
+#if DEBUG
+    printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
+    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
+#endif
+    // At present, I'm not sure how to keep a record of what vertices have been
+    // visited without using an array that can change outside the function.
+    let mutable visitedVerts = []
 
     // For every vertex in the network...
     Seq.iter (fun (vert : Vert) ->
@@ -313,60 +449,35 @@ let calculateEdgeValues_WeightedCondition (g : BidirectionalGraph<Vert, TaggedVa
                                     | _ -> 0.0
 
                 // Start the recursion for subsequent edges after this one.
-                let score = scoring g numSteps condition (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (g.OutEdges(edge.Target))) startingScore
+                let score = scoring_ConditionWeighted g numSteps condition (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (g.OutEdges(edge.Target))) startingScore (ref visitedVerts)
                 edge.Value <- score
                 ()
             ) (g.OutEdges(vert))
         ()
     ) g.Vertices
 #if DEBUG
+    stopWatch.Stop()
     printfn "Changed edge values."
-#endif
+    let ms = stopWatch.Elapsed.TotalMilliseconds
+    printfn "Milliseconds elapsed: %f" ms
+    ms
+#else
     ()
+#endif
 
 // Calculates a weighted edge value based on a condition and how many vertices
 // meet that condition a certain number of steps away.
 // (Note: some innacuracies may result thanks to the method used to avoid
 // counting vertices more than once.)
 // This version only calculates for a specified origin vertex.
-let calculateEdgeValues_WeightedConditionSingle (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition (origin : Vert) =
+let calculateEdgeValues_ConditionWeightedSingle (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition (origin : Vert) =
 #if DEBUG
     printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
+    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
 #endif
     // At present, I'm not sure how to keep a record of what vertices have been
     // visited without using an array that can change outside the function.
     let mutable visitedVerts = []
-
-    // Recursive function for looking through vertices up to a certain number
-    // of steps away, and adding up the score for all verticies that meet a
-    // given condition, weighting the score on how far the vertex is from the
-    // starting point.
-    // Ideally this should be in a seperate function since it's the same as the
-    // one in the above function, but it's relying on the mutable right now.
-    let rec scoring = fun (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition stepsToGo verts previousScore ->
-
-        // If there are no more steps to go, stop travelling down edges.
-        match stepsToGo with
-        | 0 -> (previousScore)
-        | _ -> (
-            Seq.fold (fun (previousScore : float) (vert : Vert) ->
-            // If this vertex has already been visited, don't go any further
-            // down this path.
-            if (Seq.contains(vert) visitedVerts) then
-                previousScore
-            // If this vertex meets the condition, add the weighted score to
-            // the accumulated score and add it as a visited vertex.
-            elif (condition vert) then
-                let scoreToAdd = ((1.0/(float numSteps)) * (float stepsToGo))
-                let currentScore = previousScore + scoreToAdd
-                visitedVerts <- List.append visitedVerts [vert]
-                scoring graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) currentScore
-            // Otherwise add it as a visited vertex but don't add to the score.
-            else
-                visitedVerts <- List.append visitedVerts [vert]
-                scoring graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) previousScore
-                ) previousScore verts
-            )
 
     // For the specified vertex...
     let vert = origin
@@ -392,14 +503,19 @@ let calculateEdgeValues_WeightedConditionSingle (g : BidirectionalGraph<Vert, Ta
                                 | _ -> 0.0
 
             // Start the recursion for subsequent edges after this one.
-            let score = scoring g numSteps condition (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (g.OutEdges(edge.Target))) startingScore
+            let score = scoring_ConditionWeighted g numSteps condition (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (g.OutEdges(edge.Target))) startingScore (ref visitedVerts)
             edge.Value <- score
             ()
         ) (g.OutEdges(vert))
 #if DEBUG
+    stopWatch.Stop()
     printfn "Changed edge values."
-#endif
+    let ms = stopWatch.Elapsed.TotalMilliseconds
+    printfn "Milliseconds elapsed: %f" ms
+    ms
+#else
     ()
+#endif
 
 // Added by Samuel Smith n7581769.
 // Attempts to move to the connected vertex that has the most outgoing
@@ -407,13 +523,14 @@ let calculateEdgeValues_WeightedConditionSingle (g : BidirectionalGraph<Vert, Ta
 let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>), z) =
 
     // Calculate the edge values for this operation.
-    calculateEdgeValues_Connections(g)
+    //calculateEdgeValues_Connections(g)
 
     // Sort the list of edges connected to the current vertex by how many
     // connections their targets have.
     let sortedEdges = Seq.sortByDescending (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value) (g.OutEdges((!z).Cursor))
     #if DEBUG
-    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Vertex %s has %f targets" edge.Target.Tag edge.Value) sortedEdges
+    //Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Vertex %s has %f targets" edge.Target.Tag edge.Value) sortedEdges
+    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Vertex %s weighted score based on connectedness is %f" edge.Target.Tag edge.Value) sortedEdges
     Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((!z).HistoryIndex + 1) (!z).VertHistory)
     #endif
 
@@ -441,7 +558,7 @@ let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,str
     let result = moveAlongFirstMatchingEdge(g, !z, filterQuery)
 
     // Reset the edge values.
-    resetEdgeValues(g)
+    //resetEdgeValues(g)
 
     result
 
@@ -454,11 +571,17 @@ let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,str
 // greatest score.
 let findNextHighestQueryScore((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>), z, condition) =
 
+    let currentCursor = (!z).Cursor
+
     // Calculate the edge values for this operation.
-    calculateEdgeValues_WeightedConditionSingle g 4 condition (!z).Cursor
+#if DEBUG
+    calculateEdgeValues_ConditionWeightedSingle g 4 condition currentCursor |> ignore
+#else
+    calculateEdgeValues_ConditionWeightedSingle g 4 condition currentCursor
+#endif
 
     // Sort the list of edges connected to the current vertex by their score.
-    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value) (g.OutEdges((!z).Cursor))
+    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value) (g.OutEdges(currentCursor))
     #if DEBUG
     Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Edge to vertex %s has a score of %f" edge.Target.Tag edge.Value) sortedEdges
     Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((!z).HistoryIndex + 1) (!z).VertHistory)
@@ -488,8 +611,12 @@ let findNextHighestQueryScore((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert
     // Call the movement function for a matching edge.
     let result = moveAlongFirstMatchingEdge(g, !z, filterQuery)
 
-    // Reset the edge values.
-    resetEdgeValues(g)
+    // Reset the edge values (according to the orignal cursor location).
+#if DEBUG
+    calculateEdgeValues_ConnectionsWeightedSingle g 4 currentCursor |> ignore
+#else
+    calculateEdgeValues_ConnectionsWeightedSingle g 4 currentCursor
+#endif
 
     result
 
@@ -536,7 +663,7 @@ let whereami z _rq = OK (Json.serialize (!z).Cursor)
 let connectedRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) z _request =
     //printfn "Received wheretogo operation."
     let edges = g.OutEdges((!z).Cursor)
-    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
+    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) edges
     OK (Json.serialize { Edges = Seq.toList edgesMap })
 
 // Returns the current vertex and all edges connected to it.
@@ -544,7 +671,7 @@ let getGraphRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,floa
     printfn "Received getGraph operation."
     let currentVertex = (!z).Cursor
     let edges = Seq.filter (fun (item : TaggedValueEdge<Vert,string,float>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) g.Edges
-    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) edges
+    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) edges
     OK (Json.serialize { Vertex = (!z).Cursor; Edges = Seq.toList edgesMap; History = (!z).VertHistory; HistoryIndex = (!z).HistoryIndex })
 
 // Added by Samuel Smith n7581769.
@@ -568,7 +695,7 @@ let getVerticesRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,f
 // Returns all the edges in the current graph.
 let getEdgesRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) _request =
     printfn "Received getEdges operation."
-    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag }) g.Edges
+    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) g.Edges
     OK (Json.serialize (Seq.toList edgesMap))
 
 // CORS handlers added by Samuel Smith n7581769.
@@ -695,6 +822,11 @@ let generateFreshGraph: AppGraph =
     // Go through all the edges in the graph, and set their value to the number
     // of connected edges of the target vertex.
     //calculateEdgeValues_Connections(g)
+#if DEBUG
+    calculateEdgeValues_ConnectionsWeighted g 4 |> ignore
+#else
+    calculateEdgeValues_ConnectionsWeighted g 4
+#endif
 
     // Return the completed graph.
     g
