@@ -75,7 +75,7 @@ window.onload = function() {
 
         // Check that we did receive an array of data.
         if (Array.isArray(data)) {
-            
+
             // Try to find a row in the metadata that has the supplied name.
             let row = data.find((item) => item.Name.toLowerCase() === name.toLowerCase());
 
@@ -278,13 +278,20 @@ window.onload = function() {
 
             // Colour the edge red if it's pointing to the cursor, otherwise
             // colour it green.
+            // Also, if the edge has a value, make its width the natural log of
+            // its value. This allows edges with higher scores to appear bigger
+            // while not getting excessively large with a linear scale.
             // When creating node and edge data, options can be defined as
-            // extra properties of the object.
+            // extra properties of the object. The edge also gets a "title" to
+            // allow the user to see what the value (the edge score) is.
             if (currentEdge.to === currentCursorId) {
                 currentEdge.color = 'red'
             } else {
                 currentEdge.color = 'green'
-                currentEdge.label = edge.Value.toString()
+                if (edge.Value !== undefined) {
+                    currentEdge.width = Math.log(Math.max(1, edge.Value)) + 1
+                    currentEdge.title = `Edge score: ${edge.Value}`
+                }
             }
             edgeData.push(currentEdge);
         }
@@ -610,10 +617,15 @@ window.onload = function() {
             // colour it green.
             // When creating node and edge data, options can be defined as
             // extra properties of the object.
+            // The edge also gets a "title" to allow the user to see what the
+            // value (the edge score) is.
             if (currentEdge.to === currentCursorId) {
                 currentEdge.color = 'red'
             } else {
                 currentEdge.color = 'green'
+                if (edge.Value !== undefined) {
+                    currentEdge.title = `Edge score: ${edge.Value}`
+                }
             }
             edgeData.push(currentEdge);
         }
