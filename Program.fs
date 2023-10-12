@@ -7,7 +7,6 @@ open Suave.Filters
 open Suave.Operators
 open Suave.Successful
 open Suave.RequestErrors
-// Added by Samuel Smith n7581769.
 open Suave.Writers
 
 open QuikGraph
@@ -36,7 +35,6 @@ type CompOp =
     | ValueLessThan of int
     | ValueGreaterThan of int
 
-// Types added by Samuel Smith n7581769.
 // A record type for storing an edge to be converted to JSON.
 type MiniJsonEdge = {
     Start : Vert
@@ -93,7 +91,9 @@ type MiniGraphMetadata = {
 // Default value for edges.
 let DEFAULT_EDGE_VALUE = 1.0
 
-// Added by Samuel Smith n7581769.
+// Value for number of steps in weighted score.
+let NUM_SCORE_STEPS = 4
+
 // Creates a example set of metadata for the example graph.
 // Synonyms are used in the example visuaisation for filters and can also be
 // used for move operations based on vertices matching certain criteria.
@@ -124,7 +124,6 @@ let GenerateExampleMetadata () =
         Synonyms = ["The Answer to the Ultimate Question of Life, the Universe, and Everything"; "Forty-two"]
     }]
 
-// Added by Samuel Smith n7581769.
 // Checks if the supplied query makes a match in the supplied metadata row.
 let SearchMetadata (row : ExampleInfo) query =
 
@@ -142,7 +141,6 @@ let SearchMetadata (row : ExampleInfo) query =
 let findMatchingMetadataRow (vertex: Vert) mdata =
   List.tryFind (fun (row : ExampleInfo) -> row.Name.ToLower().Equals(vertex.Tag.ToLower())) mdata
 
-// Added by Samuel Smith n7581769.
 // Determines whether a given vertex matches a query based on metadata. Used
 // for the below function.
 let findFirstWithMetadata_filter (metadata : ExampleInfo list) (query : Query) (vertex : Vert) =
@@ -155,7 +153,6 @@ let findFirstWithMetadata_filter (metadata : ExampleInfo list) (query : Query) (
     // Otherwise return false.
     | None -> false
 
-// Added by Samuel Smith n7581769.
 // Attempts to move to a vertex meeting the specified query conditions.
 // Only accepts a single query that specifies a property to search on and a
 // value that that property contains.
@@ -167,7 +164,6 @@ let findFirstWithMetadata((graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert
     // Call the movement function for a matching vertex.
     moveAlongFirstMatchingVertex(graph, !zipper, filterQuery)
 
-// Added by Samuel Smith n7581769.
 // Attempts to move to a vertex meeting the specified query conditions.
 // Accepts a list of queries (consisting of the property and the value they
 // should contain) and the logical operator to use with those queries.
@@ -198,7 +194,6 @@ type MoveOp =
     | FirstEdge of string   // Move along the first edge matching the given selection options.
     | FirstVertex of CompOp // Move to the first vertex connected to the current vertex matching the given comparison.
     | Back                  // Move to the vertex that was before the last move in the zipper's history. Does not erase the history.
-    // MoveOps added by Samuel Smith n7581769.
     | MetadataSearch of Query           // Move to the first vertex whose metadata matches the given search query.
     | MetadataSearchMulti of MultiQuery // Move to the first vertex whose metadata matches the given multiple search queries (either all of them via AND, or at least one via OR).
     | ForceToVertex of Vert             // Move to the vertex that matches the given tag and value. Can move across backwards edges.
@@ -274,10 +269,12 @@ let rec scoring_ConnectionsWeighted = fun (graph : BidirectionalGraph<Vert, Tagg
                 previousScore
             // Otherwise add to the score based on the vertex's connectedness.
             else
-                let scoreToAdd = (1.0/(float numSteps)) * float (Seq.length (graph.OutEdges(vert)))
+                // Only count edges that don't loop back to the same vertex.
+                let outgoingEdges = Seq.filter (fun (edge : TaggedValueEdge<Vert,string,float>) -> not (edge.Source.Equals(edge.Target))) (graph.OutEdges(vert))
+                let scoreToAdd = (1.0/(float numSteps))  * (float stepsToGo) * float (Seq.length outgoingEdges)
                 let currentScore = previousScore + scoreToAdd
                 visitedVerts := List.append (!visitedVerts) [vert]
-                scoring_ConnectionsWeighted graph numSteps (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) currentScore visitedVerts
+                scoring_ConnectionsWeighted graph numSteps (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) outgoingEdges) currentScore visitedVerts
             ) previousScore verts
         )
 
@@ -316,10 +313,12 @@ let calculateEdgeValues_ConnectionsWeighted (g : BidirectionalGraph<Vert, Tagged
                 visitedVerts <- [vert]
 
                 // Get the connectedness of the current vertex.
-                let startingScore = float (Seq.length (g.OutEdges(edge.Target)))
+                // Only count edges that don't loop back to the same vertex.
+                let outgoingEdges = Seq.filter (fun (edge : TaggedValueEdge<Vert,string,float>) -> not (edge.Source.Equals(edge.Target))) (g.OutEdges(edge.Target))
+                let startingScore = float (Seq.length outgoingEdges)
 
                 // Start the recursion for subsequent edges after this one.
-                let score = scoring_ConnectionsWeighted g numSteps (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (g.OutEdges(edge.Target))) startingScore (ref visitedVerts)
+                let score = scoring_ConnectionsWeighted g numSteps (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) outgoingEdges) startingScore (ref visitedVerts)
                 edge.Value <- score
                 ()
             ) (g.OutEdges(vert))
@@ -366,10 +365,12 @@ let calculateEdgeValues_ConnectionsWeightedSingle (g : BidirectionalGraph<Vert, 
             visitedVerts <- [vert]
 
             // Get the connectedness of the current vertex.
-            let startingScore = float (Seq.length (g.OutEdges(edge.Target)))
+            // Only count edges that don't loop back to the same vertex.
+            let outgoingEdges = Seq.filter (fun (edge : TaggedValueEdge<Vert,string,float>) -> not (edge.Source.Equals(edge.Target))) (g.OutEdges(edge.Target))
+            let startingScore = float (Seq.length outgoingEdges)
 
             // Start the recursion for subsequent edges after this one.
-            let score = scoring_ConnectionsWeighted g numSteps (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (g.OutEdges(edge.Target))) startingScore (ref visitedVerts)
+            let score = scoring_ConnectionsWeighted g numSteps (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) outgoingEdges) startingScore (ref visitedVerts)
             edge.Value <- score
             ()
         ) (g.OutEdges(vert))
@@ -517,7 +518,6 @@ let calculateEdgeValues_ConditionWeightedSingle (g : BidirectionalGraph<Vert, Ta
     ()
 #endif
 
-// Added by Samuel Smith n7581769.
 // Attempts to move to the connected vertex that has the most outgoing
 // connections.
 let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>), z) =
@@ -562,7 +562,6 @@ let findNextMostConnected((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,str
 
     result
 
-// Added by Samuel Smith n7581769.
 // Attempts to move to a connected vertex that is "most relevant" to a
 // particular query. Essentially, a weighted score is calculated for each
 // outgoing edge for four steps away from the initial vertex, with higher
@@ -575,9 +574,9 @@ let findNextHighestQueryScore((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert
 
     // Calculate the edge values for this operation.
 #if DEBUG
-    calculateEdgeValues_ConditionWeightedSingle g 4 condition currentCursor |> ignore
+    calculateEdgeValues_ConditionWeightedSingle g NUM_SCORE_STEPS condition currentCursor |> ignore
 #else
-    calculateEdgeValues_ConditionWeightedSingle g 4 condition currentCursor
+    calculateEdgeValues_ConditionWeightedSingle g NUM_SCORE_STEPS condition currentCursor
 #endif
 
     // Sort the list of edges connected to the current vertex by their score.
@@ -613,9 +612,9 @@ let findNextHighestQueryScore((g : BidirectionalGraph<Vert, TaggedValueEdge<Vert
 
     // Reset the edge values (according to the orignal cursor location).
 #if DEBUG
-    calculateEdgeValues_ConnectionsWeightedSingle g 4 currentCursor |> ignore
+    calculateEdgeValues_ConnectionsWeightedSingle g NUM_SCORE_STEPS currentCursor |> ignore
 #else
-    calculateEdgeValues_ConnectionsWeightedSingle g 4 currentCursor
+    calculateEdgeValues_ConnectionsWeightedSingle g NUM_SCORE_STEPS currentCursor
 #endif
 
     result
@@ -628,7 +627,6 @@ let f g z rq =
       |> UTF8.toString
       |> Json.deserialize<MoveOp>
 
-    // Message changed by Samuel Smith n7581769.
     printfn "Received move operation: %s" (moveOp.ToString())
 
     // Determine the move operation to use.
@@ -638,7 +636,6 @@ let f g z rq =
                     | FirstEdge s -> moveAlongFirstMatchingEdge(g, !z, (fun ve -> ve.Tag = s))
                     | FirstVertex co -> moveAlongFirstMatchingVertex(g, !z, mkCompOp co)
                     | Back -> Some(moveBack !z)
-                    // MoveOps added by Samuel Smith n7581769.
                     | MetadataSearch query -> findFirstWithMetadata(g, z, query)
                     | MetadataSearchMulti queryList -> findFirstWithMetadataMulti(g, z, queryList)
                     | ForceToVertex vval -> forceMoveToVertex (g, !z, vval)
@@ -649,7 +646,6 @@ let f g z rq =
 
     // Attempt to complete the move operation.
     match moveRes with
-        // Message changed by Samuel Smith n7581769.
         | None -> NOT_FOUND "No valid vertex to move to."
         | Some r ->
             z := r
@@ -658,7 +654,6 @@ let f g z rq =
 // Handles a whereami request by returning the current zipper cursor.
 let whereami z _rq = OK (Json.serialize (!z).Cursor)
 
-// Routes added by Samuel Smith n7581769.
 // Returns all edges connected to the current vertex.
 let connectedRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) z _request =
     //printfn "Received wheretogo operation."
@@ -674,14 +669,12 @@ let getGraphRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,floa
     let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) edges
     OK (Json.serialize { Vertex = (!z).Cursor; Edges = Seq.toList edgesMap; History = (!z).VertHistory; HistoryIndex = (!z).HistoryIndex })
 
-// Added by Samuel Smith n7581769.
 // Adds CORS headers to allow cross origin requests.
 //https://stackoverflow.com/questions/44359375/allow-multiple-headers-with-cors-in-suave
 let setCORSHeaders =
     addHeader "Access-Control-Allow-Origin" "*"
     >=> addHeader "Access-Control-Allow-Headers" "content-type"
 
-// Added by Samuel Smith n7581769.
 // Returns the graph's metadata.
 let getMetadataRoute _request =
     printfn "Received getMetadata operation."
@@ -698,7 +691,6 @@ let getEdgesRoute (g : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,floa
     let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) g.Edges
     OK (Json.serialize (Seq.toList edgesMap))
 
-// CORS handlers added by Samuel Smith n7581769.
 // Handles the routes for the example.
 let app g z =
     choose
@@ -717,7 +709,6 @@ let app g z =
                     >=> choose
           [ path "/whereami" >=> request (whereami z) ] )
 
-        // Routes added by Samuel Smith n7581769.
         // Request to show all valid destinations from the current zipper
         // cursor.
         GET >=> fun context ->
@@ -757,9 +748,6 @@ let app g z =
           [ path "/getEdges" >=> request (getEdgesRoute g) ] ) ]
 
 // Attempts to add an edge to the graph.
-// Changes by Samuel Smith n7581769:
-// - No longer fails if the edge already exists; and
-// - Changed name to tryAddEdge.
 let tryAddEdge (g: AppGraph, e: TaggedValueEdge<Vert,string,float>) =
     let success = g.AddEdge(e)
     // If the edge add operation returned false (i.e. the edge wasn't added)
@@ -776,9 +764,6 @@ let tryAddEdge (g: AppGraph, e: TaggedValueEdge<Vert,string,float>) =
         ()
 
 // Attempts to add a avertex to the graph.
-// Changes by Samuel Smith n7581769:
-// - No longer fails if the vertex already exists; and
-// - Changed name to tryAddVertex.
 let tryAddVertex (g: AppGraph, v: Vert) =
     let success = g.AddVertex(v)
     // If the vertex add operation returned false (i.e. the vertex wasn't
@@ -823,9 +808,9 @@ let generateFreshGraph: AppGraph =
     // of connected edges of the target vertex.
     //calculateEdgeValues_Connections(g)
 #if DEBUG
-    calculateEdgeValues_ConnectionsWeighted g 4 |> ignore
+    calculateEdgeValues_ConnectionsWeighted g NUM_SCORE_STEPS |> ignore
 #else
-    calculateEdgeValues_ConnectionsWeighted g 4
+    calculateEdgeValues_ConnectionsWeighted g NUM_SCORE_STEPS
 #endif
 
     // Return the completed graph.
