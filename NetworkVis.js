@@ -283,7 +283,8 @@ window.onload = function() {
             // while not getting excessively large with a linear scale.
             // When creating node and edge data, options can be defined as
             // extra properties of the object. The edge also gets a "title" to
-            // allow the user to see what the value (the edge score) is.
+            // allow the user to see what the value (the edge score) is, as
+            // well as the regulatory effect (if any).
             if (currentEdge.to === currentCursorId) {
                 currentEdge.color = 'red'
             } else {
@@ -291,6 +292,13 @@ window.onload = function() {
                 if (edge.Value !== undefined) {
                     currentEdge.width = Math.log(Math.max(1, edge.Value)) + 1
                     currentEdge.title = `Edge score: ${edge.Value}`
+                }
+                if (edge.Tag !== undefined) {
+                    if (currentEdge.title !== undefined) {
+                        currentEdge.title += `\nRegulatory effect: ${edge.Tag}`
+                    } else {
+                        currentEdge.title = `Regulatory effect: ${edge.Tag}`
+                    }
                 }
             }
             edgeData.push(currentEdge);
@@ -618,13 +626,21 @@ window.onload = function() {
             // When creating node and edge data, options can be defined as
             // extra properties of the object.
             // The edge also gets a "title" to allow the user to see what the
-            // value (the edge score) is.
+            // value (the edge score) is, as well as the regulatory effect (if
+            // any).
             if (currentEdge.to === currentCursorId) {
                 currentEdge.color = 'red'
             } else {
                 currentEdge.color = 'green'
                 if (edge.Value !== undefined) {
                     currentEdge.title = `Edge score: ${edge.Value}`
+                }
+                if (edge.Tag !== undefined) {
+                    if (currentEdge.title !== undefined) {
+                        currentEdge.title += `\nRegulatory effect: ${edge.Tag}`
+                    } else {
+                        currentEdge.title = `Regulatory effect: ${edge.Tag}`
+                    }
                 }
             }
             edgeData.push(currentEdge);
