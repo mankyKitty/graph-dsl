@@ -81,7 +81,7 @@ window.onload = function() {
 
             // Return the list of synonyms if it is found.
             if (row !== undefined && row.Synonyms !== undefined) {
-                return row.Synonyms;
+                return row.Synonyms.split(',');
             }
         }
 
@@ -105,7 +105,7 @@ window.onload = function() {
                 lines.push(`Name: ${row.Name}`);
                 if (row.Synonyms !== undefined) {
                     lines.push('Synonyms:');
-                    for (text of row.Synonyms) {
+                    for (text of row.Synonyms.split(',')) {
                         lines.push(`- ${text}`);
                     }
                 }
