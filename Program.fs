@@ -459,12 +459,6 @@ let calculateEdgeValues_ConnectionsWeightedSingle_BFS (graph : BidirectionalGrap
     let stopWatch = System.Diagnostics.Stopwatch.StartNew()
 #endif
 
-    // Initialise the shortest path algorithm to allow seeing how far a vertex
-    // is from the origin.
-    // Edges and vertices are given a weight of 1 since we only want to know
-    // the number of edges a vertex is away.
-    let sp = new AStarShortestPathAlgorithm<Vert, TaggedValueEdge<Vert,string,float>>(graph, (fun edge -> 1.0), (fun vert -> 1.0))
-
     // For the specified vertex...
     let vert = origin
 (*#if DEBUG
@@ -545,9 +539,6 @@ let calculateEdgeValues_ConditionWeighted (graph : BidirectionalGraph<Vert, Tagg
     printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
     let stopWatch = System.Diagnostics.Stopwatch.StartNew()
 #endif
-    // At present, I'm not sure how to keep a record of what vertices have been
-    // visited without using an array that can change outside the function.
-    let mutable visitedVerts = []
 
     // For every vertex in the network...
     Seq.iter (fun (vert : Vert) ->
@@ -746,54 +737,61 @@ let generateFreshGraph (): AppGraph =
 // Synonyms are used in the example visuaisation for filters and can also be
 // used for move operations based on vertices matching certain criteria.
 let GenerateExampleMetadata () =
-    [{
-        Id = "0";
-        Name = "zero";
-        Synonyms = ["Starting vertex"; "Zero"]
-    };
-    {
-        Id = "1";
-        Name = "one";
-        Synonyms = ["First child vertex"; "One"]
-    };
-    {
-        Id = "2";
-        Name = "two";
-        Synonyms = ["Second child vertex"; "Two"]
-    };
-    {
-        Id = "3";
-        Name = "three";
-        Synonyms = ["Third child vertex"; "Three"]
-    };
-    {
-        Id = "42";
-        Name = "forty-two";
-        Synonyms = ["The Answer to the Ultimate Question of Life, the Universe, and Everything"; "Forty-two"]
-    }]
+    let metadata = [
+        {
+            Id = "0";
+            Name = "zero";
+            Synonyms = ["Starting vertex"; "Zero"]
+        };
+        {
+            Id = "1";
+            Name = "one";
+            Synonyms = ["First child vertex"; "One"]
+        };
+        {
+            Id = "2";
+            Name = "two";
+            Synonyms = ["Second child vertex"; "Two"]
+        };
+        {
+            Id = "3";
+            Name = "three";
+            Synonyms = ["Third child vertex"; "Three"]
+        };
+        {
+            Id = "42";
+            Name = "forty-two";
+            Synonyms = ["The Answer to the Ultimate Question of Life, the Universe, and Everything"; "Forty-two"]
+        }
+    ]
+
+    List.map (fun row ->
+        Map.empty
+            .Add("Id", row.Id)
+            .Add("Name", row.Name)
+            .Add("Synonyms", String.concat "," row.Synonyms)
+    ) metadata
 
 // Checks if the supplied query makes a match in the supplied metadata row.
-let SearchMetadata (row : ExampleInfo) query =
+let SearchMetadata (row : Map<string, string>) query =
 
     // Check which property is being queried and then check if that property's
     // value contains the query value. For properties that are a list, check
     // each item in that list.
-    match query.Property with
-        | "Id" -> row.Id.Contains(query.Value)
-        | "Name" -> row.Name.Contains(query.Value)
-        | "Synonyms" -> not (List.tryFind (fun (item: string) -> item.Contains(query.Value)) row.Synonyms = None)
-        | _ -> false
+    match Map.tryFind(query.Property) row with
+        | Some value -> not (Seq.tryFind (fun (item: string) -> item.Contains(query.Value)) (value.Split(",")) = None)
+        | None -> false
 
 // ------ Functions for moving based on graph metadata. ------
 
 // Checks the loaded metadata for the specified vertex (using its name as the
 // identifier).
-let findMatchingMetadataRow (vertex: Vert) mdata =
-  List.tryFind (fun (row : ExampleInfo) -> row.Name.ToLower().Equals(vertex.Tag.ToLower())) mdata
+let findMatchingMetadataRow (vertex: Vert) metadata =
+  List.tryFind (fun (row : Map<string, string>) -> row["Name"].ToLower().Equals(vertex.Tag.ToLower())) metadata
 
 // Determines whether a given vertex matches a query based on metadata. Used
 // for the below function.
-let findFirstWithMetadata_filter (metadata : ExampleInfo list) (query : Query) (vertex : Vert) =
+let findFirstWithMetadata_filter (metadata : Map<string, string> list) (query : Query) (vertex : Vert) =
     // First, try to find a matching row in the metadata.
     // From Sean:
     match findMatchingMetadataRow vertex metadata with
@@ -806,7 +804,7 @@ let findFirstWithMetadata_filter (metadata : ExampleInfo list) (query : Query) (
 // Attempts to move to a vertex meeting the specified query conditions.
 // Only accepts a single query that specifies a property to search on and a
 // value that that property contains.
-let findFirstWithMetadata (metadata : ExampleInfo list) (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) zipper (query : Query) =
+let findFirstWithMetadata (metadata : Map<string, string> list) (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) zipper (query : Query) =
     // Set up the function for filtering with the query.
     let filterQuery = findFirstWithMetadata_filter metadata query
     // Call the movement function for a matching vertex.
@@ -815,7 +813,7 @@ let findFirstWithMetadata (metadata : ExampleInfo list) (graph : BidirectionalGr
 // Attempts to move to a vertex meeting the specified query conditions.
 // Accepts a list of queries (consisting of the property and the value they
 // should contain) and the logical operator to use with those queries.
-let findFirstWithMetadataMulti (metadata : ExampleInfo list) (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) zipper (queryList : MultiQuery) =
+let findFirstWithMetadataMulti (metadata : Map<string, string> list) (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) zipper (queryList : MultiQuery) =
     // Create the function to test for true or false on a vertex.
     let filterQuery (vertex : Vert) =
         // First, try to find a matching row in the metadata.
