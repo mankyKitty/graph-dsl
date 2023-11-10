@@ -12,6 +12,8 @@
     <Compile Include="GraphDSL/TranscriptionFactor.fs" />
     <Compile Include="GraphDSL/NetworkGraph.fs" />
     <Compile Include="GraphDSL/GraphZipper.fs" />
+    <Compile Include="GraphDSL/GraphTypes.fs" />
+    <Compile Include="GraphDSL/GraphScoring.fs" />
 
     <Compile Include="Tests.fs" />
     <Compile Include="Program.fs" />
