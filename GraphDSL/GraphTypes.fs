@@ -47,9 +47,9 @@ type TaggedValueEdge<'Vertex, 'Tag, 'Value>(source : 'Vertex, target : 'Vertex, 
 // Specifies the vertex used for the bidirectional graph. Each vertex has a
 // string tag to name it, and a integer value that is used as an identifier.
 type Vert =
-    { 
+    {
         Tag: string
-        Value: int 
+        Value: int
     }
 
 // Specifies the configuration for the QuikGraph used.

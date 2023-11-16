@@ -217,9 +217,9 @@ let findNextHighestQueryScore(graph : AppGraph) (zipper : Zipper<Vert, TaggedVal
 
     // Calculate the edge values for this operation.
 #if DEBUG
-    calculateEdgeValues_ConditionWeightedSingle graph ScoringValues.NUM_SCORE_STEPS condition currentCursor
+    DFS.calculateEdgeValues_ConditionWeightedSingle graph ScoringValues.NUM_SCORE_STEPS condition currentCursor
 #else
-    calculateEdgeValues_ConditionWeightedSingle graph ScoringValues.NUM_SCORE_STEPS condition currentCursor
+    DFS.calculateEdgeValues_ConditionWeightedSingle graph ScoringValues.NUM_SCORE_STEPS condition currentCursor
 #endif
 
     // Sort the list of edges connected to the current vertex by their score.
@@ -256,9 +256,9 @@ let findNextHighestQueryScore(graph : AppGraph) (zipper : Zipper<Vert, TaggedVal
     // Reset the edge values (according to the orignal cursor location).
 #if DEBUG
     //calculateEdgeValues_ConnectionsWeightedSingle_BFS graph NUM_SCORE_STEPS currentCursor
-    calculateEdgeValues_ConnectionsWeightedSingle_BFS graph ScoringValues.NUM_SCORE_STEPS currentCursor
+    BFS.calculateEdgeValues_ConnectionsWeightedSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor
 #else
-    calculateEdgeValues_ConnectionsWeightedSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor true
+    DFS.calculateEdgeValues_ConnectionsWeightedSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor true
 #endif
 
     result
@@ -352,9 +352,9 @@ let generateFreshGraph (): AppGraph =
     // of connected edges of the target vertex.
     //calculateEdgeValues_Connections(g)
 #if DEBUG
-    calculateEdgeValues_ConnectionsWeighted_BFS graph ScoringValues.NUM_SCORE_STEPS
+    BFS.calculateEdgeValues_ConnectionsWeighted graph ScoringValues.NUM_SCORE_STEPS
 #else
-    calculateEdgeValues_ConnectionsWeighted graph ScoringValues.NUM_SCORE_STEPS true
+    DFS.calculateEdgeValues_ConnectionsWeighted graph ScoringValues.NUM_SCORE_STEPS true
 #endif
 
     // Return the completed graph.
