@@ -105,6 +105,7 @@ type MoveOp =
     | MetadataSearchMulti of MultiQuery // Move to the first vertex whose metadata matches the given multiple search queries (either all of them via AND, or at least one via OR).
     | NextMostConnected                 // Move to the vertex with the most outgoing connections connected to the current cursor (that has not already been visited).
     | NextHighestQueryScore of Query    // Move to the vertex whose edge connecting it to the current vertex has the highest (weighted) score, based on a given query.
+    | NextHighestScore                  // Move to the vertex on the other side of the edge with the highest score connected to the current cursor (that has not already been visited).
 
 // ----------------------------------------------------------------------------
 // ------ Graph creation functions ------
@@ -165,18 +166,17 @@ let mkCompOp (comparison: CompOp): (Vert -> bool) =
         | EqualTo (Tag s) -> fun v -> v.Tag = s
         | EqualTo (Value vl) -> fun v -> v.Value = vl
 
-// Attempts to move to the connected vertex that has the most outgoing
-// connections.
-let findNextMostConnected (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) =
+// Attempts to move to a previously unvisited vertex based upon the highest
+// edge score from the current vertex.
+let findNextHighestScore (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) =
 
-    // Sort the list of edges connected to the current vertex by how many
-    // connections their targets have.
+    // Sort the list of edges connected to the current vertex in descending
+    // order of their edge score.
     let sortedEdges = Seq.sortByDescending (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value) (graph.OutEdges((zipper.Value).Cursor))
-    #if DEBUG
-    //Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Vertex %s has %f targets" edge.Target.Tag edge.Value) sortedEdges
-    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Vertex %s weighted score based on connectedness is %f" edge.Target.Tag edge.Value) sortedEdges
+#if LOGGING && VERBOSE
+    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Score of the edge to %s has the value %f" edge.Target.Tag edge.Value) sortedEdges
     Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((zipper.Value).HistoryIndex + 1) (zipper.Value).VertHistory)
-    #endif
+#endif
 
     // Function for checking if a vertex is in the history; used in the
     // function below.
@@ -190,7 +190,8 @@ let findNextMostConnected (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueE
     // next most connected vertex.
     let targetEdge =
         // Find a vertex that's not already in the history.
-        match Seq.tryFind (fun (sortedEdge : TaggedValueEdge<Vert,string,float>) -> not (checkInHistory sortedEdge.Target)) sortedEdges with
+        // Also check that the score does not equal zero.
+        match Seq.tryFind (fun (sortedEdge : TaggedValueEdge<Vert,string,float>) -> not (checkInHistory sortedEdge.Target) && sortedEdge.Value > 0.0) sortedEdges with
         | Some (result) -> result
         | None -> new TaggedValueEdge<Vert, string, float>(newVert "null_1" -1, newVert"null_2" -2,"null",-ScoringValues.DEFAULT_EDGE_VALUE) // This is beccause each side needs to return a value.
 
@@ -200,6 +201,36 @@ let findNextMostConnected (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueE
 
     // Call the movement function for a matching edge.
     let result = moveAlongFirstMatchingEdge(graph, zipper.Value, filterQuery)
+
+#if LOGGING && VERBOSE
+    match result with
+        | Some r -> printfn "Successfully moved to %s." r.Cursor.Tag
+        | None -> printfn "No matching edge to move along."
+#endif
+
+    result
+
+// Attempts to move to the connected vertex that has the most outgoing
+// connections.
+let findNextMostConnected (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) =
+
+    let currentCursor = (zipper.Value).Cursor
+
+    // Calculate the edge values for this operation.
+#if DEBUG
+    Basic.calculateEdgeValues_ConnectionsSingle graph currentCursor
+#endif
+
+    // Call the function for moving to the vertex connected to the edge with
+    // the highest score (which hasn't been visited yet).
+    let result = findNextHighestScore graph zipper
+
+    // Reset the edge values (according to the orignal cursor location).
+#if DEBUG
+    WeightedBFS.calculateEdgeValues_ConnectionsSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor
+#else
+    WeightedDFS.calculateEdgeValues_ConnectionsSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor true
+#endif
 
     result
 
@@ -217,48 +248,20 @@ let findNextHighestQueryScore(graph : AppGraph) (zipper : Zipper<Vert, TaggedVal
 
     // Calculate the edge values for this operation.
 #if DEBUG
-    DFS.calculateEdgeValues_ConditionWeightedSingle graph ScoringValues.NUM_SCORE_STEPS condition currentCursor
+    WeightedBFS.calculateEdgeValues_ConditionSingle condition graph ScoringValues.NUM_SCORE_STEPS currentCursor
 #else
-    DFS.calculateEdgeValues_ConditionWeightedSingle graph ScoringValues.NUM_SCORE_STEPS condition currentCursor
+    WeightedDFS.calculateEdgeValues_ConditionSingle condition graph ScoringValues.NUM_SCORE_STEPS currentCursor
 #endif
 
-    // Sort the list of edges connected to the current vertex by their score.
-    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value) (graph.OutEdges(currentCursor))
-    #if DEBUG
-    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Edge to vertex %s has a score of %f" edge.Target.Tag edge.Value) sortedEdges
-    Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((zipper.Value).HistoryIndex + 1) (zipper.Value).VertHistory)
-    #endif
-
-    // Function for checking if a vertex is in the history; used in the
-    // function below.
-    let checkInHistory (vertex : Vert) =
-        match Seq.tryFind(fun historyVert -> vertex.Equals(historyVert)) (last ((zipper.Value).HistoryIndex + 1) (zipper.Value).VertHistory) with
-        | Some (result) -> true
-        | None -> false
-
-    // Function to check for the first edge in the sorted list whose target
-    // isn't in the history. This will be the edge that is connected to the
-    // next most connected vertex.
-    let targetEdge =
-        // Find a vertex that's not already in the history.
-        // Also check that the score does not equal zero.
-        match Seq.tryFind (fun (sortedEdge : TaggedValueEdge<Vert,string,float>) -> not (checkInHistory sortedEdge.Target) && sortedEdge.Value > 0.0) sortedEdges with
-        | Some (result) -> result
-        | None -> new TaggedValueEdge<Vert, string, float>(newVert "null_1" -1, newVert "null_2" -2,"null",-ScoringValues.DEFAULT_EDGE_VALUE) // This is beccause each side needs to return a value.
-
-    // Create the function to test for true or false on an edge.
-    let filterQuery (edge : TaggedValueEdge<Vert,string,float>) =
-        edge.Equals(targetEdge)
-
-    // Call the movement function for a matching edge.
-    let result = moveAlongFirstMatchingEdge(graph, zipper.Value, filterQuery)
+    // Call the function for moving to the vertex connected to the edge with
+    // the highest score (which hasn't been visited yet).
+    let result = findNextHighestScore graph zipper
 
     // Reset the edge values (according to the orignal cursor location).
 #if DEBUG
-    //calculateEdgeValues_ConnectionsWeightedSingle_BFS graph NUM_SCORE_STEPS currentCursor
-    BFS.calculateEdgeValues_ConnectionsWeightedSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor
+    WeightedBFS.calculateEdgeValues_ConnectionsSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor
 #else
-    DFS.calculateEdgeValues_ConnectionsWeightedSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor true
+    WeightedDFS.calculateEdgeValues_ConnectionsSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor true
 #endif
 
     result
@@ -270,7 +273,7 @@ let SearchMetadata (row : Map<string, string>) query =
     // value contains the query value. For properties that are a list, check
     // each item in that list.
     match Map.tryFind(query.Property) row with
-        | Some value -> not (Seq.tryFind (fun (item: string) -> item.Contains(query.SearchTerm)) (value.Split(",")) = None)
+        | Some value -> not (Seq.tryFind (fun (item: string) -> item.ToLower().Contains(query.SearchTerm.ToLower())) (value.Split(",")) = None)
         | None -> false
 
 // Checks the loaded metadata for the specified vertex (using its name as the
@@ -352,9 +355,9 @@ let generateFreshGraph (): AppGraph =
     // of connected edges of the target vertex.
     //calculateEdgeValues_Connections(g)
 #if DEBUG
-    BFS.calculateEdgeValues_ConnectionsWeighted graph ScoringValues.NUM_SCORE_STEPS
+    WeightedBFS.calculateEdgeValues_Connections graph ScoringValues.NUM_SCORE_STEPS
 #else
-    DFS.calculateEdgeValues_ConnectionsWeighted graph ScoringValues.NUM_SCORE_STEPS true
+    WeightedDFS.calculateEdgeValues_Connections graph ScoringValues.NUM_SCORE_STEPS true
 #endif
 
     // Return the completed graph.
@@ -430,11 +433,18 @@ let moveRoute metadata graph (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,
                     | MetadataSearchMulti queryList -> findFirstWithMetadataMulti metadata graph zipper queryList
                     | NextMostConnected -> findNextMostConnected graph zipper
                     | NextHighestQueryScore query -> findNextHighestQueryScore graph zipper ((findFirstWithMetadata_filter metadata) query)
+                    | NextHighestScore -> findNextHighestScore graph zipper
 
     // Attempt to complete the move operation.
     match moveRes with
-        | None -> NOT_FOUND "No valid vertex to move to."
+        | None ->
+            printfn "Remained at vertex %s (%i) as move action did not return a valid vertex." zipper.Value.Cursor.Tag zipper.Value.Cursor.Value
+            NOT_FOUND "No valid vertex to move to."
         | Some newZipper ->
+            if (newZipper.Cursor.Equals(zipper.Value.Cursor)) then
+                printfn "Remained at vertex %s (%i) as move action returned the same vertex." newZipper.Cursor.Tag newZipper.Cursor.Value
+            else
+                printfn "Moved to vertex %s (%i)." newZipper.Cursor.Tag newZipper.Cursor.Value
             zipper.Value <- newZipper
             OK (Json.serialize (zipper.Value).Cursor)
 
@@ -555,6 +565,8 @@ let app graph zipper =
 // $ curl -X POST -vvv --data '{"moveOp":"GoToHistory","moveInputs":0}' http://localhost:8080/move
 // NextHighestQueryScore:
 // $ curl -X POST -vvv --data '{"moveOp":"NextMostConnected","moveInputs":{"Property":"Synonyms","Value":"child"}}' http://localhost:8080/move
+// NextHighestScore:
+// $ curl -X POST -vvv --data '{"moveOp":"NextHighestScore","moveInputs":[]}' http://localhost:8080/move
 
 // Example curl commands (Windows):
 // ToVertex:
@@ -575,14 +587,18 @@ let app graph zipper =
 // curl -X POST -vvv --data {\"moveOp\":\"GoToHistory\",\"moveInputs\":0} http://localhost:8080/move
 // NextHighestQueryScore:
 // curl -X POST -vvv --data {\"moveOp\":\"NextMostConnected\",\"moveInputs\":{\"Property\":\"Synonyms\",\"Value\":\"child\"}}} http://localhost:8080/move
+// NextHighestScore:
+// curl -X POST -vvv --data {\"moveOp\":\"NextHighestScore\",\"moveInputs\":[]} http://localhost:8080/move
 [<EntryPoint>]
 // Main function for the example serer. Creates a graph and zipper and uses
 // them to start the web server with the specified configuration.
 let main argv =
     let mutable graph = generateFreshGraph()
-    printfn "Graph Status vertices: %i, edges: %i" (graph.VertexCount) (graph.EdgeCount)
+#if LOGGING
+    printfn "Created a graph with %i vertices and %i edges." (graph.VertexCount) (graph.EdgeCount)
+#endif
     let root = newVert "zero" 0
-    printfn "Root JSON: %s" (Json.serialize root)
+    printfn "Starting at vertex: %s" (Json.serialize root)
     let mutable freshZip = ref (createZipper root)
     startWebServer defaultConfig (app graph freshZip)
     0

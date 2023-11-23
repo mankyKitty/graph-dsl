@@ -1,7 +1,7 @@
 ﻿module GraphDSL.Scoring
 
-#if DEBUG
-// If debugging, use the stopwatches provided by this module for timing.
+#if LOGGING
+// If logging, use the stopwatches provided by this module for timing.
 open System.Diagnostics
 #endif
 
@@ -45,38 +45,53 @@ module ScoringValues =
 // ----------------------------------------------------------------------------
 
 // Functions that return a value for edges based on a simple condition.
-module Basic = 
+module Basic =
 
     // Resets all edge values to the default of 1.0.
     let resetEdgeValues (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) =
-    #if DEBUG
+#if LOGGING
         printfn "Resetting edge values..."
         let stopWatch = Stopwatch.StartNew()
-    #endif
+#endif
         Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value <- ScoringValues.DEFAULT_EDGE_VALUE) graph.Edges
-    #if DEBUG
+#if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
-    #endif
+#endif
 
     // Calculates edge values for a given graph by how many connections the target
     // vertex has.
     let calculateEdgeValues_Connections (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) =
-    #if DEBUG
+#if LOGGING
         printfn "Changing edge values to number of target's connections..."
         let stopWatch = Stopwatch.StartNew()
-    #endif
+#endif
         Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value <- Seq.length (graph.OutEdges(edge.Target))) graph.Edges
-    #if DEBUG
+#if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
-    #endif
+#endif
+
+    // Calculates edge values for a given graph by how many connections the target
+    // vertex has.
+    // This version only calculates for a specified origin vertex.
+    let calculateEdgeValues_ConnectionsSingle (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) (origin : Vert) =
+#if LOGGING
+        printfn "Changing edge values to number of target's connections (from %s only)..." origin.Tag
+        let stopWatch = Stopwatch.StartNew()
+#endif
+        Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value <- Seq.length (graph.OutEdges(edge.Target))) (graph.OutEdges(origin))
+#if LOGGING
+        stopWatch.Stop()
+        let ms = stopWatch.Elapsed.TotalMilliseconds
+        printfn "Changed edge values in %f ms." ms
+#endif
 
 // Functions that use depth first search to create a score based on vertices
 // that are deeper in the graph than the edge's target.
-module DFS = 
+module WeightedDFS =
 
     // ------ Depth first traversal scoring based on graph connectedness ------
 
@@ -84,7 +99,7 @@ module DFS =
     // of steps away, and adding up the score for all verticies based on their
     // connectedness, weighting the score on how far the vertex is from the
     // starting point.
-    let rec private scoring_ConnectionsWeighted = fun (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps stepsToGo verts previousScore uniqueOnly (visitedVerts : Vert list ref) ->
+    let rec private scoring_Connections = fun (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps stepsToGo verts previousScore uniqueOnly (visitedVerts : Vert list ref) ->
 
             // If there are no more steps to go, stop travelling down edges.
             match stepsToGo with
@@ -101,7 +116,7 @@ module DFS =
                     let outgoingEdges = Seq.filter (fun (edge : TaggedValueEdge<Vert,string,float>) -> not (edge.Source.Equals(edge.Target))) (graph.OutEdges(vert))
                     // Each step after the first should have the score each
                     // connection contributes decreased.
-    #if DEBUG
+#if DEBUG
                     // If in debug mode, the weighting should decrease by the same
                     // amount per step to allow for better comparisons as we
                     // explore scoring possibilities.
@@ -112,7 +127,7 @@ module DFS =
                                         (1.0/(float numSteps))  * (float stepsToGo) * float (Seq.length outgoingEdges)
                                         else
                                         ScoringValues.STEP_WEIGHT * (float stepsToGo) * float (Seq.length outgoingEdges)
-    #else
+#else
                     // Each step after the first should have the score each
                     // connection contributes decreased.
                     // This will be scaled by the total number of steps. So for
@@ -120,26 +135,26 @@ module DFS =
                     // contribute 1.0 for the first step, 0.66... in the second
                     // step and 0.33... in the third step.
                     let scoreToAdd = (1.0/(float numSteps))  * (float stepsToGo) * float (Seq.length outgoingEdges)
-    #endif
-    #if DEBUG && VERBOSE
+#endif
+#if LOGGING && VERBOSE
                     printfn "%s is %i away and so its connections can be counted - adding %f to score (currently %f)" vert.Tag (numSteps + 1 - stepsToGo) scoreToAdd previousScore
-    #endif
+#endif
                     let currentScore = previousScore + scoreToAdd
                     visitedVerts.Value <- List.append (visitedVerts.Value) [vert]
-                    scoring_ConnectionsWeighted graph numSteps (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) outgoingEdges) currentScore uniqueOnly visitedVerts
+                    scoring_Connections graph numSteps (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) outgoingEdges) currentScore uniqueOnly visitedVerts
                 ) previousScore verts
             )
 
     // Iterator function for connection weighted scoring.
-    let private edgeIterator_ConnectionsWeighted (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) vert numSteps uniqueOnly (edge : TaggedValueEdge<Vert,string,float>) =
+    let private edgeIterator_Connections (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) vert numSteps uniqueOnly (edge : TaggedValueEdge<Vert,string,float>) =
         // Only proceed with calculating the score if this edge isn't
         // a loop.
         if (edge.Source.Equals(edge.Target)) then
             ()
         else
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "------ Calculating score for edge %s to %s ------" edge.Source.Tag edge.Target.Tag
-    #endif
+#endif
             // Initialise the list of visited verticies for this starting point.
             // At present, I'm not sure how to keep a record of what vertices have
             // been visited without using an array that can change outside the
@@ -150,28 +165,28 @@ module DFS =
             // Only count edges that don't loop back to the same vertex.
             let outgoingEdges = Seq.filter (fun (edge : TaggedValueEdge<Vert,string,float>) -> not (edge.Source.Equals(edge.Target))) (graph.OutEdges(edge.Target))
             let startingScore = float (Seq.length outgoingEdges)
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "Added %f to score from edges from %s" startingScore edge.Target.Tag
-    #endif
+#endif
 
             // Start the recursion for subsequent edges after this one.
-            let score = scoring_ConnectionsWeighted graph numSteps (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) outgoingEdges) startingScore uniqueOnly (ref visitedVerts)
+            let score = scoring_Connections graph numSteps (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) outgoingEdges) startingScore uniqueOnly (ref visitedVerts)
             edge.Value <- score
 
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "Edge score set to %f" score
-    #endif
+#endif
             ()
 
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
     // (Note: some innacuracies may result thanks to the method used to avoid
     // counting vertices more than once.)
-    let calculateEdgeValues_ConnectionsWeighted (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps uniqueOnly =
-    #if DEBUG
+    let calculateEdgeValues_Connections (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps uniqueOnly =
+#if LOGGING
         printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
-    #endif
+#endif
 
         // Recursive function for looking through vertices up to a certain number
         // of steps away, and adding up the score for all verticies based on their
@@ -180,21 +195,21 @@ module DFS =
 
         // For every vertex in the network...
         Seq.iter (fun (vert : Vert) ->
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "------------ Calculating scores from vertex %s -----------" vert.Tag
-    #endif
+#endif
 
             // Iterate through the adjacent edges first. This is done here
             // since the scores should be applied to these edges (they aren't
             // actually done so yet in this test).
-            Seq.iter (edgeIterator_ConnectionsWeighted graph vert numSteps uniqueOnly) (graph.OutEdges(vert))
+            Seq.iter (edgeIterator_Connections graph vert numSteps uniqueOnly) (graph.OutEdges(vert))
             ()
         ) graph.Vertices
-    #if DEBUG
+#if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
-    #endif
+#endif
         ()
 
     // Calculates a weighted edge value based on connectedness, considering
@@ -202,11 +217,11 @@ module DFS =
     // (Note: some innacuracies may result thanks to the method used to avoid
     // counting vertices more than once.)
     // This version only calculates for a specified origin vertex.
-    let calculateEdgeValues_ConnectionsWeightedSingle (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps (origin : Vert) uniqueOnly =
-    #if DEBUG
-        printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
+    let calculateEdgeValues_ConnectionsSingle (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps (origin : Vert) uniqueOnly =
+#if LOGGING
+        printfn "Changing edge values to weighted score based on number of connections and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
-    #endif
+#endif
 
         // For the specified vertex...
         let vert = origin
@@ -214,12 +229,12 @@ module DFS =
         // Iterate through the adjacent edges first. This is done here
         // since the scores should be applied to these edges (they aren't
         // actually done so yet in this test).
-        Seq.iter (edgeIterator_ConnectionsWeighted graph vert numSteps uniqueOnly) (graph.OutEdges(vert))
-    #if DEBUG
+        Seq.iter (edgeIterator_Connections graph vert numSteps uniqueOnly) (graph.OutEdges(vert))
+#if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
-    #endif
+#endif
         ()
 
     // ------ Depth first traversal scoring based on a given condition ------
@@ -228,7 +243,7 @@ module DFS =
     // of steps away, and adding up the score for all verticies that meet a
     // given condition, weighting the score on how far the vertex is from the
     // starting point.
-    let rec private scoring_ConditionWeighted = fun (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition stepsToGo verts previousScore (visitedVerts : Vert list ref) ->
+    let rec private scoring_Condition = fun condition (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps stepsToGo verts previousScore (visitedVerts : Vert list ref) ->
 
         // If there are no more steps to go, stop travelling down edges.
         match stepsToGo with
@@ -243,7 +258,7 @@ module DFS =
             // the accumulated score and add it as a visited vertex.
             // down this path.
             elif (condition vert) then
-    #if DEBUG
+#if DEBUG
                 // If in debug mode, the weighting should decrease by the same
                 // amount per step to allow for better comparisons as we
                 // explore scoring possibilities.
@@ -254,7 +269,7 @@ module DFS =
                                     ((1.0/(float numSteps)) * (float stepsToGo))
                                     else
                                     ScoringValues.STEP_WEIGHT * (float stepsToGo)
-    #else
+#else
                 // Each step after the first should have the score each
                 // vertex fitting the conditions contributes decreased.
                 // This will be scaled by the total number of steps. So for
@@ -262,29 +277,29 @@ module DFS =
                 // contribute 1.0 for the first step, 0.66... in the second
                 // step and 0.33... in the third step.
                 let scoreToAdd = ((1.0/(float numSteps)) * (float stepsToGo))
-    #endif
-    #if DEBUG && VERBOSE
+#endif
+#if LOGGING && VERBOSE
                 printfn "%s is %i away and meets the condition, therefore it can be counted - adding %f to score (currently %f)" vert.Tag (numSteps + 1 - stepsToGo) scoreToAdd previousScore
-    #endif
+#endif
                 let currentScore = previousScore + scoreToAdd
                 visitedVerts.Value <- List.append (visitedVerts.Value) [vert]
-                scoring_ConditionWeighted graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) currentScore visitedVerts
+                scoring_Condition condition graph numSteps (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) currentScore visitedVerts
             // Otherwise add it as a visited vertex but don't add to the score.
             else
                 visitedVerts.Value <- List.append (visitedVerts.Value) [vert]
-                scoring_ConditionWeighted graph numSteps condition (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) previousScore visitedVerts
+                scoring_Condition condition graph numSteps (stepsToGo - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(vert))) previousScore visitedVerts
                 ) previousScore verts
             )
 
     // Iterator function for condition weighted scoring.
-    let private edgeIterator_ConditionWeighted graph vert numSteps condition (edge : TaggedValueEdge<Vert,string,float>) =
+    let private edgeIterator_Condition condition graph vert numSteps (edge : TaggedValueEdge<Vert,string,float>) =
         // Only proceed with calculating the score if this edge isn't a loop.
         if (edge.Source.Equals(edge.Target)) then
             ()
         else
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "------ Calculating score for edge %s to %s ------" edge.Source.Tag edge.Target.Tag
-    #endif
+#endif
             // Initialise the list of visited verticies for this starting point.
             // At present, I'm not sure how to keep a record of what vertices have
             // been visited without using an array that can change outside the
@@ -297,12 +312,12 @@ module DFS =
             let startingScore = match condition edge.Target with
                                 | true -> 1.0
                                 | _ -> 0.0
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "Added %f to score from whether or not %s meets the condition" startingScore edge.Target.Tag
-    #endif
+#endif
 
             // Start the recursion for subsequent edges after this one.
-            let score = scoring_ConditionWeighted graph numSteps condition (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(edge.Target))) startingScore (ref visitedVerts)
+            let score = scoring_Condition condition graph numSteps (numSteps - 1) (Seq.map (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Target) (graph.OutEdges(edge.Target))) startingScore (ref visitedVerts)
             edge.Value <- score
             ()
 
@@ -310,29 +325,29 @@ module DFS =
     // meet that condition a certain number of steps away.
     // (Note: some innacuracies may result thanks to the method used to avoid
     // counting vertices more than once.)
-    let calculateEdgeValues_ConditionWeighted (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition =
-    #if DEBUG
+    let calculateEdgeValues_Condition condition (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps =
+#if LOGGING
         printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
-    #endif
+#endif
 
         // For every vertex in the network...
         Seq.iter (fun (vert : Vert) ->
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "------------ Calculating scores from vertex %s -----------" vert.Tag
-    #endif
+#endif
 
             // Iterate through the adjacent edges first. This is done here
             // since the scores should be applied to these edges (they aren't
             // actually done so yet in this test).
-            Seq.iter (edgeIterator_ConditionWeighted graph vert numSteps condition) (graph.OutEdges(vert))
+            Seq.iter (edgeIterator_Condition condition graph vert numSteps) (graph.OutEdges(vert))
             ()
         ) graph.Vertices
-    #if DEBUG
+#if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
-    #endif
+#endif
         ()
 
     // Calculates a weighted edge value based on a condition and how many vertices
@@ -340,11 +355,11 @@ module DFS =
     // (Note: some innacuracies may result thanks to the method used to avoid
     // counting vertices more than once.)
     // This version only calculates for a specified origin vertex.
-    let calculateEdgeValues_ConditionWeightedSingle (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps condition (origin : Vert) =
-    #if DEBUG
-        printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
+    let calculateEdgeValues_ConditionSingle condition (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps (origin : Vert) =
+#if LOGGING
+        printfn "Changing edge values to weighted score based on condition and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
-    #endif
+#endif
 
         // For the specified vertex...
         let vert = origin
@@ -352,29 +367,29 @@ module DFS =
         // Iterate through the adjacent edges first. This is done here
         // since the scores should be applied to these edges (they aren't
         // actually done so yet in this test).
-        Seq.iter (edgeIterator_ConditionWeighted graph vert numSteps condition) (graph.OutEdges(vert))
-    #if DEBUG
+        Seq.iter (edgeIterator_Condition condition graph vert numSteps) (graph.OutEdges(vert))
+#if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
-    #endif
+#endif
         ()
 
 // Functions that use breadth first search to create a score based on vertices
 // that are deeper in the graph than the edge's target.
-module BFS = 
+module WeightedBFS =
 
     // ------ Breadth first traversal scoring based on graph connectedness ------
 
     // Iterator function for connection weighted BFS scoring.
-    let private edgeIterator_ConnectionsWeighted graph vert numSteps (edge : TaggedValueEdge<Vert,string,float>) =
+    let private edgeIterator_Connections graph vert numSteps (edge : TaggedValueEdge<Vert,string,float>) =
         // Only proceed with calculating the score if this edge isn't a loop.
         if (edge.Source.Equals(edge.Target)) then
             ()
         else
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "------ Calculating score for edge %s to %s ------" edge.Source.Tag edge.Target.Tag
-    #endif
+#endif
 
             // Initialise the shortest path algorithm to allow seeing how far a vertex
             // is from the origin.
@@ -387,9 +402,9 @@ module BFS =
             // Only count edges that don't loop back to the same vertex.
             let outgoingEdges = Seq.filter (fun (edge : TaggedValueEdge<Vert,string,float>) -> not (edge.Source.Equals(edge.Target))) (graph.OutEdges(edge.Target))
             let mutable score = float (Seq.length outgoingEdges)
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "Added %f to score from edges from %s" score edge.Target.Tag
-    #endif
+#endif
             // Do not traverse if the number of steps is one.
             if (numSteps > 1) then
 
@@ -416,7 +431,7 @@ module BFS =
                         // Only count edges that don't loop back to the same
                         // vertex.
                         let outgoingEdges = Seq.filter (fun (edge : TaggedValueEdge<Vert,string,float>) -> not (edge.Source.Equals(edge.Target))) (graph.OutEdges(currentVert))
-    #if DEBUG
+#if DEBUG
                         // If in debug mode, the weighting should decrease by the
                         // same amount per step to allow for better comparisons as
                         // we explore scoring possibilities.
@@ -427,7 +442,7 @@ module BFS =
                                             (1.0/(float numSteps)) * ((float numSteps) - value) * float (Seq.length outgoingEdges)
                                             else
                                             ScoringValues.STEP_WEIGHT * ((float numSteps) - value) * float (Seq.length outgoingEdges)
-    #else
+#else
                         // Each step after the first should have the score each
                         // connection contributes decreased.
                         // This will be scaled by the total number of steps. So for
@@ -435,10 +450,10 @@ module BFS =
                         // contribute 1.0 for the first step, 0.66... in the second
                         // step and 0.33... in the third step.
                         let scoreToAdd = (1.0/(float numSteps)) * ((float numSteps) - value) * float (Seq.length outgoingEdges)
-    #endif
-    #if DEBUG && VERBOSE
+#endif
+#if LOGGING && VERBOSE
                         printfn "%s is %f (therefore %f total) away and so its connections can be counted - adding %f to score (currently %f)" currentVert.Tag value (value + 1.0) scoreToAdd score
-    #endif
+#endif
                         score <- score + scoreToAdd
 
                 // Initialise the breadth-first search.
@@ -462,61 +477,214 @@ module BFS =
             // Set the edge's value to the computed score.
             edge.Value <- score
 
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "Edge score set to %f" score
-    #endif
+#endif
             ()
 
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
     // Uses QuikGraph's breadth-first search function.
-    let calculateEdgeValues_ConnectionsWeighted (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps =
-    #if DEBUG
+    let calculateEdgeValues_Connections (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps =
+#if LOGGING
         printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
-    #endif
+#endif
 
         // For every vertex in the network...
         Seq.iter (fun (vert : Vert) ->
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
             printfn "------------ Calculating scores from vertex %s -----------" vert.Tag
-    #endif
+#endif
 
             // Iterate through the adjacent edges first, so the scores can be
             // applied to each edge.
-            Seq.iter (edgeIterator_ConnectionsWeighted graph vert numSteps) (graph.OutEdges(vert))
+            Seq.iter (edgeIterator_Connections graph vert numSteps) (graph.OutEdges(vert))
         ) graph.Vertices
-    #if DEBUG
+#if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
-    #endif
+#endif
         ()
 
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
     // Uses QuikGraph's breadth-first search function.
     // This version only calculates for a specified origin vertex.
-    let calculateEdgeValues_ConnectionsWeightedSingle (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps (origin : Vert) =
-    #if DEBUG
-        printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
+    let calculateEdgeValues_ConnectionsSingle (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps (origin : Vert) =
+#if LOGGING
+        printfn "Changing edge values to weighted score based on number of connections and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
-    #endif
+#endif
 
         // For the specified vertex...
         let vert = origin
-    #if DEBUG && VERBOSE
+#if LOGGING && VERBOSE
         printfn "------------ Calculating scores from vertex %s -----------" vert.Tag
-    #endif
+#endif
 
         // Iterate through the adjacent edges first, so the scores can be applied
         // to each edge.
-        Seq.iter (edgeIterator_ConnectionsWeighted graph vert numSteps) (graph.OutEdges(vert))
-    #if DEBUG
+        Seq.iter (edgeIterator_Connections graph vert numSteps) (graph.OutEdges(vert))
+#if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
-    #endif
+#endif
         ()
 
     // ------ Breadth first traversal scoring based on a given condition ------
+
+    // Iterator function for condition weighted BFS scoring.
+    let private edgeIterator_Condition condition graph vert numSteps (edge : TaggedValueEdge<Vert,string,float>) =
+        // Only proceed with calculating the score if this edge isn't a loop.
+        if (edge.Source.Equals(edge.Target)) then
+            ()
+        else
+#if LOGGING && VERBOSE
+            printfn "------ Calculating score for edge %s to %s ------" edge.Source.Tag edge.Target.Tag
+#endif
+
+            // Initialise the shortest path algorithm to allow seeing how far a vertex
+            // is from the origin.
+            // Edges and vertices are given a weight of 1 since we only want to know
+            // the number of edges a vertex is away.
+            let sp = new AStarShortestPathAlgorithm<Vert, TaggedValueEdge<Vert,string,float>>(graph, (fun edge -> 1.0), (fun vert -> 1.0))
+
+            // A mutable value for the current score. Starts with whether the target
+            // of this edge meets the condition.
+            let mutable score = match condition edge.Target with
+                                | true -> 1.0
+                                | _ -> 0.0
+#if LOGGING && VERBOSE
+            printfn "Added %f to score from edges from %s" score edge.Target.Tag
+#endif
+            // Do not traverse if the number of steps is one.
+            if (numSteps > 1) then
+
+                // Get the distances of all other vertices from the edge's target.
+                sp.Compute(edge.Target)
+
+                // When a vertex is first visited in the search, determine the
+                // score based on the distance.
+                // Note: I'd prefer this to be a seperate function rather than
+                // defined here, but I couldn't get it to work with a mutable score
+                // value even if I passed a reference.
+                let calculateScore (currentVert : Vert) =
+
+                    // Check how far the current vertex is from the starting one.
+                    // - If 0, this is a loop, so ignore this vertex.
+                    // - If greater than the total number of steps minus one,
+                    //   ignore this vertex. (Minus one is to account for the first
+                    //   step being completed already.)
+                    // Otherwise add a weighted score.
+                    match sp.GetDistance(currentVert) with
+                    | 0.0 -> ()
+                    | (value) when value > float (numSteps - 1) -> ()
+                    | (value) ->
+                        // If this vertex meets the condition, add a weighted value
+                        // to the score.
+                        if (condition currentVert) then
+#if DEBUG
+                            // If in debug mode, the weighting should decrease by the same
+                            // amount per step to allow for better comparisons as we
+                            // explore scoring possibilities.
+                            // This only works up to a certain number of steps, however, so
+                            // make sure this wouldn't cause odd results first. If it would,
+                            // use the regular calculation (described below).
+                            let scoreToAdd = if (ScoringValues.STEP_WEIGHT * float numSteps > 1) then
+                                                (1.0/(float numSteps)) * ((float numSteps) - value)
+                                                else
+                                                ScoringValues.STEP_WEIGHT * ((float numSteps) - value)
+#else
+                            // Each step after the first should have the score each
+                            // vertex fitting the conditions contributes decreased.
+                            // This will be scaled by the total number of steps. So for
+                            // example, if there are three total steps, each vertex will
+                            // contribute 1.0 for the first step, 0.66... in the second
+                            // step and 0.33... in the third step.
+                            let scoreToAdd = (1.0/(float numSteps)) * ((float numSteps) - value)
+#endif
+#if LOGGING && VERBOSE
+                            printfn "%s is %f away and meets the condition, therefore it can be counted - adding %f to score (currently %f)" currentVert.Tag (sp.GetDistance(currentVert) + 1.0) scoreToAdd score
+#endif
+                            score <- score + scoreToAdd
+
+                // Initialise the breadth-first search.
+                // A filter is added to avoid traversing past the original node or
+                // the current target.
+                let bfs = new BreadthFirstSearchAlgorithm<Vert, TaggedValueEdge<Vert,string,float>>(
+                    null,
+                    graph,
+                    new QuikGraph.Collections.Queue<Vert>(),
+                    new System.Collections.Generic.Dictionary<Vert, GraphColor>(),
+                    (fun currentEdges -> Seq.filter (fun currentEdge -> not ((currentEdge.Target.Equals(vert)) || (currentEdge.Target.Equals(edge.Target)))) currentEdges)
+                )
+
+                // Set the breadth-first search to use the function above with the
+                // score value for this edge.
+                bfs.add_DiscoverVertex(calculateScore)
+
+                // Compute the breadth-first search from this edge's target.
+                bfs.Compute(edge.Target)
+
+            // Set the edge's value to the computed score.
+            edge.Value <- score
+
+#if LOGGING && VERBOSE
+            printfn "Edge score set to %f" score
+#endif
+            ()
+
+    // Calculates a weighted edge value based on connectedness, considering
+    // vertices that are a certain number of steps away.
+    // Uses QuikGraph's breadth-first search function.
+    let calculateEdgeValues_Condition condition (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps =
+#if LOGGING
+        printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
+        let stopWatch = Stopwatch.StartNew()
+#endif
+
+        // For every vertex in the network...
+        Seq.iter (fun (vert : Vert) ->
+#if LOGGING && VERBOSE
+            printfn "------------ Calculating scores from vertex %s -----------" vert.Tag
+#endif
+
+            // Iterate through the adjacent edges first, so the scores can be
+            // applied to each edge.
+            Seq.iter (edgeIterator_Condition condition graph vert numSteps) (graph.OutEdges(vert))
+        ) graph.Vertices
+#if LOGGING
+        stopWatch.Stop()
+        let ms = stopWatch.Elapsed.TotalMilliseconds
+        printfn "Changed edge values in %f ms." ms
+#endif
+        ()
+
+    // Calculates a weighted edge value based on connectedness, considering
+    // vertices that are a certain number of steps away.
+    // Uses QuikGraph's breadth-first search function.
+    // This version only calculates for a specified origin vertex.
+    let calculateEdgeValues_ConditionSingle condition (graph : BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>) numSteps (origin : Vert) =
+#if LOGGING
+        printfn "Changing edge values to weighted score based on condition and %i steps (from %s only)..." numSteps origin.Tag
+        let stopWatch = Stopwatch.StartNew()
+#endif
+
+        // For the specified vertex...
+        let vert = origin
+#if LOGGING && VERBOSE
+        printfn "------------ Calculating scores from vertex %s -----------" vert.Tag
+#endif
+
+        // Iterate through the adjacent edges first, so the scores can be applied
+        // to each edge.
+        Seq.iter (edgeIterator_Condition condition graph vert numSteps) (graph.OutEdges(vert))
+#if LOGGING
+        stopWatch.Stop()
+        let ms = stopWatch.Elapsed.TotalMilliseconds
+        printfn "Changed edge values in %f ms." ms
+#endif
+        ()

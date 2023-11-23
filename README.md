@@ -49,6 +49,10 @@ $ curl -X POST -vvv --data '{"moveOp":"GoToHistory","moveInputs":0}' http://loca
 ```
 $ curl -X POST -vvv --data '{"moveOp":"NextHighestQueryScore","moveInputs":{"Property":"Synonyms","Value":"child"}}' http://localhost:8080/move
 ```
+#### NextHighestScore:
+```
+$ curl -X POST -vvv --data '{"moveOp":"NextHighestScore","moveInputs":[]}' http://localhost:8080/move
+```
 
 ### Windows
 #### ToVertex:
@@ -86,4 +90,8 @@ curl -X POST -vvv --data {\"moveOp\":\"GoToHistory\",\"moveInputs\":0} http://lo
 #### NextHighestQueryScore
 ```
 curl -X POST -vvv --data {\"moveOp\":\"NextHighestQueryScore\",\"moveInputs\":{\"Property\":\"Synonyms\",\"Value\":\"child\"}} http://localhost:8080/move
+```
+#### NextHighestScore
+```
+curl -X POST -vvv --data {\"moveOp\":\"NextHighestScore\",\"moveInputs\":[]} http://localhost:8080/move
 ```
