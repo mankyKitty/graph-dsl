@@ -52,5 +52,8 @@ type Vert =
         Value: int
     }
 
+// Specifies the edge used for the QuikGraph.
+type AppEdge = TaggedValueEdge<Vert,string,float>
+
 // Specifies the configuration for the QuikGraph used.
 type AppGraph = BidirectionalGraph<Vert, TaggedValueEdge<Vert,string,float>>

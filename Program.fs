@@ -121,7 +121,7 @@ let newVert (tag: string) (value: int): Vert =
     { Tag = tag; Value = value }
 
 // Attempts to add an edge to the graph.
-let tryAddEdge (graph: AppGraph) (edge: TaggedValueEdge<Vert,string,float>) =
+let tryAddEdge (graph: AppGraph) (edge: AppEdge) =
     let success = graph.AddEdge(edge)
     // If the edge add operation returned false (i.e. the edge wasn't added)
     // then check if the edge is in the graph; this means that the edge was
@@ -168,13 +168,13 @@ let mkCompOp (comparison: CompOp): (Vert -> bool) =
 
 // Attempts to move to a previously unvisited vertex based upon the highest
 // edge score from the current vertex.
-let findNextHighestScore (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) =
+let findNextHighestScore (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) =
 
     // Sort the list of edges connected to the current vertex in descending
     // order of their edge score.
-    let sortedEdges = Seq.sortByDescending (fun (edge : TaggedValueEdge<Vert,string,float>) -> edge.Value) (graph.OutEdges((zipper.Value).Cursor))
+    let sortedEdges = Seq.sortByDescending (fun (edge : AppEdge) -> edge.Value) (graph.OutEdges((zipper.Value).Cursor))
 #if LOGGING && VERBOSE
-    Seq.iter (fun (edge : TaggedValueEdge<Vert,string,float>) -> printfn "Score of the edge to %s has the value %f" edge.Target.Tag edge.Value) sortedEdges
+    Seq.iter (fun (edge : AppEdge) -> printfn "Score of the edge to %s has the value %f" edge.Target.Tag edge.Value) sortedEdges
     Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((zipper.Value).HistoryIndex + 1) (zipper.Value).VertHistory)
 #endif
 
@@ -191,12 +191,12 @@ let findNextHighestScore (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEd
     let targetEdge =
         // Find a vertex that's not already in the history.
         // Also check that the score does not equal zero.
-        match Seq.tryFind (fun (sortedEdge : TaggedValueEdge<Vert,string,float>) -> not (checkInHistory sortedEdge.Target) && sortedEdge.Value > 0.0) sortedEdges with
+        match Seq.tryFind (fun (sortedEdge : AppEdge) -> not (checkInHistory sortedEdge.Target) && sortedEdge.Value > 0.0) sortedEdges with
         | Some (result) -> result
         | None -> new TaggedValueEdge<Vert, string, float>(newVert "null_1" -1, newVert"null_2" -2,"null",-ScoringValues.DEFAULT_EDGE_VALUE) // This is beccause each side needs to return a value.
 
     // Create the function to test for true or false on an edge.
-    let filterQuery (edge : TaggedValueEdge<Vert,string,float>) =
+    let filterQuery (edge : AppEdge) =
         edge.Equals(targetEdge)
 
     // Call the movement function for a matching edge.
@@ -212,7 +212,7 @@ let findNextHighestScore (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEd
 
 // Attempts to move to the connected vertex that has the most outgoing
 // connections.
-let findNextMostConnected (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) =
+let findNextMostConnected (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) =
 
     let currentCursor = (zipper.Value).Cursor
 
@@ -242,7 +242,7 @@ let findNextMostConnected (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueE
 // weightings for closer vertices to the starting point (that fulfil the
 // query condition), and the zipper will travel down the edge that has the
 // greatest score.
-let findNextHighestQueryScore(graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) condition =
+let findNextHighestQueryScore(graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) condition =
 
     let currentCursor = (zipper.Value).Cursor
 
@@ -296,7 +296,7 @@ let findFirstWithMetadata_filter (metadata : Map<string, string> list) (query : 
 // Attempts to move to a vertex meeting the specified query conditions.
 // Only accepts a single query that specifies a property to search on and a
 // value that that property contains.
-let findFirstWithMetadata (metadata : Map<string, string> list) (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) (query : Query) =
+let findFirstWithMetadata (metadata : Map<string, string> list) (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) (query : Query) =
     // Set up the function for filtering with the query.
     let filterQuery = findFirstWithMetadata_filter metadata query
     // Call the movement function for a matching vertex.
@@ -305,7 +305,7 @@ let findFirstWithMetadata (metadata : Map<string, string> list) (graph : AppGrap
 // Attempts to move to a vertex meeting the specified query conditions.
 // Accepts a list of queries (consisting of the property and the value they
 // should contain) and the logical operator to use with those queries.
-let findFirstWithMetadataMulti (metadata : Map<string, string> list) (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) (queryList : MultiQuery) =
+let findFirstWithMetadataMulti (metadata : Map<string, string> list) (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) (queryList : MultiQuery) =
     // Create the function to test for true or false on a vertex.
     let filterQuery (vertex : Vert) =
         // First, try to find a matching row in the metadata.
@@ -408,7 +408,7 @@ let GenerateExampleMetadata () =
 
 // Handles a move request. Attempts to complete the request, failing with a 404
 // response if the operation did not return a valid vertex.
-let moveRoute metadata graph (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) request =
+let moveRoute metadata graph (zipper : Zipper<Vert, AppEdge> ref) request =
     let moveOp =
       request.rawForm
       |> UTF8.toString
@@ -454,18 +454,18 @@ let locationRoute (zipper : Zipper<Vert, TaggedValueEdge<Vert, string, float>> r
     OK (Json.serialize (zipper.Value).Cursor)
 
 // Returns all edges connected to the current vertex.
-let connectedRoute (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) _request =
+let connectedRoute (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) _request =
     printfn "Received getDestinations operation."
     let edges = graph.OutEdges((zipper.Value).Cursor)
-    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) edges
+    let edgesMap = Seq.map (fun (item : AppEdge) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) edges
     OK (Json.serialize { Edges = Seq.toList edgesMap })
 
 // Returns the current vertex and all edges connected to it.
-let getGraphRoute (graph : AppGraph) (zipper : Zipper<Vert, TaggedValueEdge<Vert,string,float>> ref) _request =
+let getGraphRoute (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) _request =
     printfn "Received getGraph operation."
     let currentVertex = (zipper.Value).Cursor
-    let edges = Seq.filter (fun (item : TaggedValueEdge<Vert,string,float>) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) graph.Edges
-    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) edges
+    let edges = Seq.filter (fun (item : AppEdge) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) graph.Edges
+    let edgesMap = Seq.map (fun (item : AppEdge) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) edges
     OK (Json.serialize { Vertex = (zipper.Value).Cursor; Edges = Seq.toList edgesMap; History = (zipper.Value).VertHistory; HistoryIndex = (zipper.Value).HistoryIndex })
 
 // Adds CORS headers to allow cross origin requests.
@@ -487,7 +487,7 @@ let getVerticesRoute (graph : AppGraph) _request =
 // Returns all the edges in the current graph.
 let getEdgesRoute (graph : AppGraph) _request =
     printfn "Received getEdges operation."
-    let edgesMap = Seq.map (fun (item : TaggedValueEdge<Vert,string,float>) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) graph.Edges
+    let edgesMap = Seq.map (fun (item : AppEdge) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) graph.Edges
     OK (Json.serialize (Seq.toList edgesMap))
 
 // Handles the routes for the example.
