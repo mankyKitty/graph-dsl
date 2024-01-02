@@ -26,7 +26,7 @@ module ScoringValues =
     // Number of steps to use when generating weighted scores.
     let NUM_SCORE_STEPS = 4
 
-#if DEBUG
+#if DEBUG && !NO_WEIGHTS
     // "Step" value to use when determining weighted scores. Each step further
     // the first will have the score contributed by each connection decreased
     // by this value multiplied by the number of steps away.
@@ -59,6 +59,7 @@ module Basic =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
+        graph
 
     // Calculates edge values for a given graph by how many connections the target
     // vertex has.
@@ -73,11 +74,12 @@ module Basic =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
+        graph
 
     // Calculates edge values for a given graph by how many connections the target
     // vertex has.
     // This version only calculates for a specified origin vertex.
-    let calculateEdgeValues_ConnectionsSingle (graph : AppGraph) (origin : Vert) =
+    let calculateEdgeValues_ConnectionsSingle (origin : Vert) (graph : AppGraph) =
 #if LOGGING
         printfn "Changing edge values to number of target's connections (from %s only)..." origin.Tag
         let stopWatch = Stopwatch.StartNew()
@@ -88,6 +90,7 @@ module Basic =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
+        graph
 
 // Functions that use depth first search to create a score based on vertices
 // that are deeper in the graph than the edge's target.
@@ -117,6 +120,10 @@ module WeightedDFS =
                     // Each step after the first should have the score each
                     // connection contributes decreased.
 #if DEBUG
+#if NO_WEIGHTS
+                    // If not using weights, add the total outgoing edges.
+                    let scoreToAdd = float (Seq.length outgoingEdges)
+#else
                     // If in debug mode, the weighting should decrease by the same
                     // amount per step to allow for better comparisons as we
                     // explore scoring possibilities.
@@ -127,6 +134,7 @@ module WeightedDFS =
                                         (1.0/(float numSteps))  * (float stepsToGo) * float (Seq.length outgoingEdges)
                                         else
                                         ScoringValues.STEP_WEIGHT * (float stepsToGo) * float (Seq.length outgoingEdges)
+#endif
 #else
                     // Each step after the first should have the score each
                     // connection contributes decreased.
@@ -182,7 +190,7 @@ module WeightedDFS =
     // vertices that are a certain number of steps away.
     // (Note: some innacuracies may result thanks to the method used to avoid
     // counting vertices more than once.)
-    let calculateEdgeValues_Connections (graph : AppGraph) numSteps uniqueOnly =
+    let calculateEdgeValues_Connections numSteps uniqueOnly (graph : AppGraph) =
 #if LOGGING
         printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
@@ -210,14 +218,14 @@ module WeightedDFS =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        ()
+        graph
 
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
     // (Note: some innacuracies may result thanks to the method used to avoid
     // counting vertices more than once.)
     // This version only calculates for a specified origin vertex.
-    let calculateEdgeValues_ConnectionsSingle (graph : AppGraph) numSteps (origin : Vert) uniqueOnly =
+    let calculateEdgeValues_ConnectionsSingle numSteps (origin : Vert) uniqueOnly (graph : AppGraph) =
 #if LOGGING
         printfn "Changing edge values to weighted score based on number of connections and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
@@ -235,7 +243,7 @@ module WeightedDFS =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        ()
+        graph
 
     // ------ Depth first traversal scoring based on a given condition ------
 
@@ -259,6 +267,10 @@ module WeightedDFS =
             // down this path.
             elif (condition vert) then
 #if DEBUG
+#if NO_WEIGHTS
+                // If not using weights, add one.
+                let scoreToAdd = 1.0
+#else
                 // If in debug mode, the weighting should decrease by the same
                 // amount per step to allow for better comparisons as we
                 // explore scoring possibilities.
@@ -269,6 +281,7 @@ module WeightedDFS =
                                     ((1.0/(float numSteps)) * (float stepsToGo))
                                     else
                                     ScoringValues.STEP_WEIGHT * (float stepsToGo)
+#endif
 #else
                 // Each step after the first should have the score each
                 // vertex fitting the conditions contributes decreased.
@@ -325,7 +338,7 @@ module WeightedDFS =
     // meet that condition a certain number of steps away.
     // (Note: some innacuracies may result thanks to the method used to avoid
     // counting vertices more than once.)
-    let calculateEdgeValues_Condition condition (graph : AppGraph) numSteps =
+    let calculateEdgeValues_Condition condition numSteps (graph : AppGraph) =
 #if LOGGING
         printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
@@ -348,14 +361,14 @@ module WeightedDFS =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        ()
+        graph
 
     // Calculates a weighted edge value based on a condition and how many vertices
     // meet that condition a certain number of steps away.
     // (Note: some innacuracies may result thanks to the method used to avoid
     // counting vertices more than once.)
     // This version only calculates for a specified origin vertex.
-    let calculateEdgeValues_ConditionSingle condition (graph : AppGraph) numSteps (origin : Vert) =
+    let calculateEdgeValues_ConditionSingle condition numSteps (origin : Vert) (graph : AppGraph) =
 #if LOGGING
         printfn "Changing edge values to weighted score based on condition and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
@@ -373,7 +386,7 @@ module WeightedDFS =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        ()
+        graph
 
 // Functions that use breadth first search to create a score based on vertices
 // that are deeper in the graph than the edge's target.
@@ -432,6 +445,10 @@ module WeightedBFS =
                         // vertex.
                         let outgoingEdges = Seq.filter (fun (edge : AppEdge) -> not (edge.Source.Equals(edge.Target))) (graph.OutEdges(currentVert))
 #if DEBUG
+#if NO_WEIGHTS
+                        // If not using weights, add the total outgoing edges.
+                        let scoreToAdd = float (Seq.length outgoingEdges)
+#else
                         // If in debug mode, the weighting should decrease by the
                         // same amount per step to allow for better comparisons as
                         // we explore scoring possibilities.
@@ -442,6 +459,7 @@ module WeightedBFS =
                                             (1.0/(float numSteps)) * ((float numSteps) - value) * float (Seq.length outgoingEdges)
                                             else
                                             ScoringValues.STEP_WEIGHT * ((float numSteps) - value) * float (Seq.length outgoingEdges)
+#endif
 #else
                         // Each step after the first should have the score each
                         // connection contributes decreased.
@@ -485,7 +503,7 @@ module WeightedBFS =
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
     // Uses QuikGraph's breadth-first search function.
-    let calculateEdgeValues_Connections (graph : AppGraph) numSteps =
+    let calculateEdgeValues_Connections numSteps (graph : AppGraph) =
 #if LOGGING
         printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
@@ -506,13 +524,13 @@ module WeightedBFS =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        ()
+        graph
 
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
     // Uses QuikGraph's breadth-first search function.
     // This version only calculates for a specified origin vertex.
-    let calculateEdgeValues_ConnectionsSingle (graph : AppGraph) numSteps (origin : Vert) =
+    let calculateEdgeValues_ConnectionsSingle numSteps (origin : Vert) (graph : AppGraph) =
 #if LOGGING
         printfn "Changing edge values to weighted score based on number of connections and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
@@ -532,7 +550,7 @@ module WeightedBFS =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        ()
+        graph
 
     // ------ Breadth first traversal scoring based on a given condition ------
 
@@ -587,6 +605,10 @@ module WeightedBFS =
                         // to the score.
                         if (condition currentVert) then
 #if DEBUG
+#if NO_WEIGHTS
+                            // If not using weights, add one.
+                            let scoreToAdd = 1.0
+#else
                             // If in debug mode, the weighting should decrease by the same
                             // amount per step to allow for better comparisons as we
                             // explore scoring possibilities.
@@ -597,6 +619,7 @@ module WeightedBFS =
                                                 (1.0/(float numSteps)) * ((float numSteps) - value)
                                                 else
                                                 ScoringValues.STEP_WEIGHT * ((float numSteps) - value)
+#endif
 #else
                             // Each step after the first should have the score each
                             // vertex fitting the conditions contributes decreased.
@@ -640,7 +663,7 @@ module WeightedBFS =
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
     // Uses QuikGraph's breadth-first search function.
-    let calculateEdgeValues_Condition condition (graph : AppGraph) numSteps =
+    let calculateEdgeValues_Condition condition numSteps (graph : AppGraph) =
 #if LOGGING
         printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
@@ -661,13 +684,13 @@ module WeightedBFS =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        ()
+        graph
 
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
     // Uses QuikGraph's breadth-first search function.
     // This version only calculates for a specified origin vertex.
-    let calculateEdgeValues_ConditionSingle condition (graph : AppGraph) numSteps (origin : Vert) =
+    let calculateEdgeValues_ConditionSingle condition numSteps (origin : Vert) (graph : AppGraph) =
 #if LOGGING
         printfn "Changing edge values to weighted score based on condition and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
@@ -687,4 +710,4 @@ module WeightedBFS =
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        ()
+        graph

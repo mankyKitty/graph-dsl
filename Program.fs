@@ -121,36 +121,76 @@ let newVert (tag: string) (value: int): Vert =
     { Tag = tag; Value = value }
 
 // Attempts to add an edge to the graph.
-let tryAddEdge (graph: AppGraph) (edge: AppEdge) =
+let tryAddEdge (edge: AppEdge) (graph: AppGraph) =
     let success = graph.AddEdge(edge)
     // If the edge add operation returned false (i.e. the edge wasn't added)
     // then check if the edge is in the graph; this means that the edge was
     // already in the graph.
     if (not success) then
         if (graph.ContainsEdge(edge)) then
-            ()
+#if LOGGING && VERBOSE
+            printfn "Edge %s (%i) to %s (%i) already exists" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
+#endif
+            graph
         // Otherwise, the operation failed for another reason and there's a
         // problem with creating the graph.
         else
-            failwith "Failed to add edge"
+            printfn "Failed to add edge %s (%i) to %s (%i)" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
+            graph
     else
-        ()
+#if LOGGING && VERBOSE
+        printfn "Successfully added edge %s (%i) to %s (%i)" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
+#endif
+        graph
 
 // Attempts to add a avertex to the graph.
-let tryAddVertex (graph: AppGraph) (vert: Vert) =
+let tryAddVertex (vert: Vert) (graph: AppGraph) =
     let success = graph.AddVertex(vert)
     // If the vertex add operation returned false (i.e. the vertex wasn't
     // added) then check if the vertex is in the graph; this means that the
     // vertex was already in the graph.
     if (not success) then
         if (graph.ContainsVertex(vert)) then
-            ()
+#if LOGGING && VERBOSE
+            printfn "Vertex %s (%i) already exists" vert.Tag vert.Value
+#endif
+            graph
         // Otherwise, the operation failed for another reason and there's a
         // problem with creating the graph.
         else
-            failwith "Failed to add vertex"
+            printfn "Failed to add vertex %s (%i)" vert.Tag vert.Value
+            graph
     else
-        ()
+#if LOGGING && VERBOSE
+        printfn "Successfully added vertex %s (%i)" vert.Tag vert.Value
+#endif
+        graph
+
+// Creates a clone of a graph.
+// QuikGraph's clone doesn't seem to make a proper seperate clone so this is
+// used when we want to copy the current graph and modify the clone.
+// This does not copy any scores the original graph has, though.
+let cloneGraph (graph : AppGraph) =
+#if LOGGING
+    printfn "Cloning graph..."
+    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
+#endif
+    let tempGraph = Seq.fold (fun graph (vert : Vert) ->
+        tryAddVertex (newVert vert.Tag vert.Value) graph) (new AppGraph()) graph.Vertices
+#if LOGGING
+    let newGraph = Seq.fold (fun graph (edge : AppEdge) ->
+#else
+    Seq.fold (fun graph (edge : AppEdge) ->
+#endif
+        let source = (newVert edge.Source.Tag edge.Source.Value)
+        let target = (newVert edge.Target.Tag edge.Target.Value)
+        tryAddEdge (newEdge source target edge.Tag) graph) tempGraph graph.Edges
+#if LOGGING
+    stopWatch.Stop()
+    let ms = stopWatch.Elapsed.TotalMilliseconds
+    printfn "Cloned graph in %f ms." ms
+    newGraph
+#endif
 
 // ----------------------------------------------------------------------------
 // ------ Graph movement functions ------
@@ -216,21 +256,21 @@ let findNextMostConnected (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref
 
     let currentCursor = (zipper.Value).Cursor
 
+    let tempGraph = cloneGraph graph
+
     // Calculate the edge values for this operation.
-#if DEBUG
-    Basic.calculateEdgeValues_ConnectionsSingle graph currentCursor
-#endif
+                    |> Basic.calculateEdgeValues_ConnectionsSingle currentCursor (*graph*)
 
     // Call the function for moving to the vertex connected to the edge with
     // the highest score (which hasn't been visited yet).
     let result = findNextHighestScore graph zipper
 
     // Reset the edge values (according to the orignal cursor location).
-#if DEBUG
-    WeightedBFS.calculateEdgeValues_ConnectionsSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor
+(*#if DEBUG
+    WeightedBFS.calculateEdgeValues_ConnectionsSingle ScoringValues.NUM_SCORE_STEPS currentCursor graph
 #else
-    WeightedDFS.calculateEdgeValues_ConnectionsSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor true
-#endif
+    WeightedDFS.calculateEdgeValues_ConnectionsSingle ScoringValues.NUM_SCORE_STEPS currentCursor true graph
+#endif*)
 
     result
 
@@ -246,11 +286,13 @@ let findNextHighestQueryScore(graph : AppGraph) (zipper : Zipper<Vert, AppEdge> 
 
     let currentCursor = (zipper.Value).Cursor
 
+    let tempGraph = cloneGraph graph
+
     // Calculate the edge values for this operation.
 #if DEBUG
-    WeightedBFS.calculateEdgeValues_ConditionSingle condition graph ScoringValues.NUM_SCORE_STEPS currentCursor
+                    |> WeightedBFS.calculateEdgeValues_ConditionSingle condition ScoringValues.NUM_SCORE_STEPS currentCursor (*graph*)
 #else
-    WeightedDFS.calculateEdgeValues_ConditionSingle condition graph ScoringValues.NUM_SCORE_STEPS currentCursor
+                    |> WeightedDFS.calculateEdgeValues_ConditionSingle condition ScoringValues.NUM_SCORE_STEPS currentCursor
 #endif
 
     // Call the function for moving to the vertex connected to the edge with
@@ -258,11 +300,11 @@ let findNextHighestQueryScore(graph : AppGraph) (zipper : Zipper<Vert, AppEdge> 
     let result = findNextHighestScore graph zipper
 
     // Reset the edge values (according to the orignal cursor location).
-#if DEBUG
-    WeightedBFS.calculateEdgeValues_ConnectionsSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor
+(*#if DEBUG
+    WeightedBFS.calculateEdgeValues_ConnectionsSingle ScoringValues.NUM_SCORE_STEPS currentCursor graph
 #else
-    WeightedDFS.calculateEdgeValues_ConnectionsSingle graph ScoringValues.NUM_SCORE_STEPS currentCursor true
-#endif
+    WeightedDFS.calculateEdgeValues_ConnectionsSingle ScoringValues.NUM_SCORE_STEPS currentCursor true graph
+#endif*)
 
     result
 
@@ -276,17 +318,17 @@ let SearchMetadata (row : Map<string, string>) query =
         | Some value -> not (Seq.tryFind (fun (item: string) -> item.ToLower().Contains(query.SearchTerm.ToLower())) (value.Split(",")) = None)
         | None -> false
 
-// Checks the loaded metadata for the specified vertex (using its name as the
-// identifier).
-let findMatchingMetadataRow (vertex: Vert) metadata =
-  List.tryFind (fun (row : Map<string, string>) -> row["Name"].ToLower().Equals(vertex.Tag.ToLower())) metadata
+// Checks the loaded metadata for the specified vertex.
+// The key to match on is passed as a parameter.
+let findMatchingMetadataRow (vertex: Vert) matchKey metadata =
+  List.tryFind (fun (row : Map<string, string>) -> row[matchKey].ToLower().Equals(vertex.Tag.ToLower())) metadata
 
 // Determines whether a given vertex matches a query based on metadata. Used
 // for the below function.
 let findFirstWithMetadata_filter (metadata : Map<string, string> list) (query : Query) (vertex : Vert) =
     // First, try to find a matching row in the metadata.
     // From Sean:
-    match findMatchingMetadataRow vertex metadata with
+    match findMatchingMetadataRow vertex "Name" metadata with
     // If a metadata match was found, check the metadata for a query
     // match.
     | Some (row) -> SearchMetadata row query
@@ -309,7 +351,7 @@ let findFirstWithMetadataMulti (metadata : Map<string, string> list) (graph : Ap
     // Create the function to test for true or false on a vertex.
     let filterQuery (vertex : Vert) =
         // First, try to find a matching row in the metadata.
-        match findMatchingMetadataRow vertex metadata with
+        match findMatchingMetadataRow vertex "Name" metadata with
         // If a metadata match was found, check the metadata for a query match.
         | Some (row) ->
             // If the operation is AND, return true if all queries matched.
@@ -328,7 +370,6 @@ let findFirstWithMetadataMulti (metadata : Map<string, string> list) (graph : Ap
 
 // Generates the graph for this example.
 let generateFreshGraph (): AppGraph =
-    let mutable graph = new AppGraph ()
 
     // Create the vertices for the graph.
     let vzero = newVert "zero" 0
@@ -338,26 +379,27 @@ let generateFreshGraph (): AppGraph =
     let vfortytwo = newVert "forty-two" 42
 
     // Attempt to add the vertices to the graph.
-    tryAddVertex graph vzero
-    tryAddVertex graph vone
-    tryAddVertex graph vtwo
-    tryAddVertex graph vthree
-    tryAddVertex graph vfortytwo
+    let graph = new AppGraph ()
+                |> tryAddVertex vzero
+                |> tryAddVertex vone
+                |> tryAddVertex vtwo
+                |> tryAddVertex vthree
+                |> tryAddVertex vfortytwo
 
     // Attempt to add edges to the graph.
-    tryAddEdge graph (newEdge vzero vone "add_one")
-    tryAddEdge graph (newEdge vzero vtwo "add_two")
-    tryAddEdge graph (newEdge vtwo vthree "two_three")
-    tryAddEdge graph (newEdge vone vthree "one_three")
-    tryAddEdge graph (newEdge vthree vfortytwo "end")
+                |> tryAddEdge (newEdge vzero vone "add_one")
+                |> tryAddEdge (newEdge vzero vtwo "add_two")
+                |> tryAddEdge (newEdge vtwo vthree "two_three")
+                |> tryAddEdge (newEdge vone vthree "one_three")
+                |> tryAddEdge (newEdge vthree vfortytwo "end")
 
     // Go through all the edges in the graph, and set their value to the number
     // of connected edges of the target vertex.
     //calculateEdgeValues_Connections(g)
 #if DEBUG
-    WeightedBFS.calculateEdgeValues_Connections graph ScoringValues.NUM_SCORE_STEPS
+                |> WeightedBFS.calculateEdgeValues_Connections ScoringValues.NUM_SCORE_STEPS
 #else
-    WeightedDFS.calculateEdgeValues_Connections graph ScoringValues.NUM_SCORE_STEPS true
+                |> WeightedDFS.calculateEdgeValues_Connections ScoringValues.NUM_SCORE_STEPS true
 #endif
 
     // Return the completed graph.

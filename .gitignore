@@ -453,7 +453,11 @@ $RECYCLE.BIN/
 !.vscode/launch.json
 !.vscode/extensions.json
 
-## Ignoring some of Sam's additions
+# Solution used during development (that includes other projects)
 graph-dsl.sln
-ExampleServer/*
+
+# Temporary code file backups
 *.bak
+
+# Environment file
+.env
