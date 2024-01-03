@@ -582,7 +582,7 @@ window.onload = function() {
     // Clicking the "Move to most connected neighbour" button.
     moveByScoreButton.addEventListener('click', function() {
         if (currentFilterText.length < 1) {
-            postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'NextMostConnected','moveInputs':[]});
+            postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'NextMostConnected','moveInputs':true});
         } else {
             postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'NextHighestQueryScore','moveInputs':{'Property':'Synonyms','Value':currentFilterText}});
         }

@@ -8,6 +8,8 @@
     <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'" />
+
   <ItemGroup>
     <Compile Include="GraphDSL/TranscriptionFactor.fs" />
     <Compile Include="GraphDSL/NetworkGraph.fs" />
@@ -22,10 +24,20 @@
       <Link>input_files/%(RecursiveDir)/%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+
+    <None Include="NetworkVis.js" />
+
+    <Content Include="NetworkVis.html" />
+
+    <None Include="README.md" />
   </ItemGroup>
 
+  <ItemGroup />
+
+  <ItemGroup />
+
   <ItemGroup>
-    <PackageReference Include="FParsec-Big-Data-Edition" Version="1.1.1" NoWarn="NU1701"/>
+    <PackageReference Include="FParsec-Big-Data-Edition" Version="1.1.1" NoWarn="NU1701" />
     <PackageReference Include="FSharp.FGL" Version="0.0.3" />
     <PackageReference Include="FSharp.Json" Version="0.4.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.1.0" />

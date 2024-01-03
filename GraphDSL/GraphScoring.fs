@@ -53,13 +53,15 @@ module Basic =
         printfn "Resetting edge values..."
         let stopWatch = Stopwatch.StartNew()
 #endif
-        Seq.iter (fun (edge : AppEdge) -> edge.Value <- ScoringValues.DEFAULT_EDGE_VALUE) graph.Edges
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
+        Seq.iter (fun (edge : AppEdge) -> edge.Value <- ScoringValues.DEFAULT_EDGE_VALUE) newGraph.Edges
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
 
     // Calculates edge values for a given graph by how many connections the target
     // vertex has.
@@ -68,13 +70,15 @@ module Basic =
         printfn "Changing edge values to number of target's connections..."
         let stopWatch = Stopwatch.StartNew()
 #endif
-        Seq.iter (fun (edge : AppEdge) -> edge.Value <- Seq.length (graph.OutEdges(edge.Target))) graph.Edges
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
+        Seq.iter (fun (edge : AppEdge) -> edge.Value <- Seq.length (newGraph.OutEdges(edge.Target))) newGraph.Edges
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
 
     // Calculates edge values for a given graph by how many connections the target
     // vertex has.
@@ -84,13 +88,15 @@ module Basic =
         printfn "Changing edge values to number of target's connections (from %s only)..." origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
-        Seq.iter (fun (edge : AppEdge) -> edge.Value <- Seq.length (graph.OutEdges(edge.Target))) (graph.OutEdges(origin))
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
+        Seq.iter (fun (edge : AppEdge) -> edge.Value <- Seq.length (newGraph.OutEdges(edge.Target))) (newGraph.OutEdges(origin))
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
 
 // Functions that use depth first search to create a score based on vertices
 // that are deeper in the graph than the edge's target.
@@ -195,6 +201,8 @@ module WeightedDFS =
         printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
 
         // Recursive function for looking through vertices up to a certain number
         // of steps away, and adding up the score for all verticies based on their
@@ -210,15 +218,15 @@ module WeightedDFS =
             // Iterate through the adjacent edges first. This is done here
             // since the scores should be applied to these edges (they aren't
             // actually done so yet in this test).
-            Seq.iter (edgeIterator_Connections graph vert numSteps uniqueOnly) (graph.OutEdges(vert))
+            Seq.iter (edgeIterator_Connections newGraph vert numSteps uniqueOnly) (newGraph.OutEdges(vert))
             ()
-        ) graph.Vertices
+        ) newGraph.Vertices
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
 
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
@@ -230,6 +238,8 @@ module WeightedDFS =
         printfn "Changing edge values to weighted score based on number of connections and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
 
         // For the specified vertex...
         let vert = origin
@@ -237,13 +247,13 @@ module WeightedDFS =
         // Iterate through the adjacent edges first. This is done here
         // since the scores should be applied to these edges (they aren't
         // actually done so yet in this test).
-        Seq.iter (edgeIterator_Connections graph vert numSteps uniqueOnly) (graph.OutEdges(vert))
+        Seq.iter (edgeIterator_Connections newGraph vert numSteps uniqueOnly) (newGraph.OutEdges(vert))
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
 
     // ------ Depth first traversal scoring based on a given condition ------
 
@@ -343,6 +353,8 @@ module WeightedDFS =
         printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
 
         // For every vertex in the network...
         Seq.iter (fun (vert : Vert) ->
@@ -353,15 +365,15 @@ module WeightedDFS =
             // Iterate through the adjacent edges first. This is done here
             // since the scores should be applied to these edges (they aren't
             // actually done so yet in this test).
-            Seq.iter (edgeIterator_Condition condition graph vert numSteps) (graph.OutEdges(vert))
+            Seq.iter (edgeIterator_Condition condition newGraph vert numSteps) (newGraph.OutEdges(vert))
             ()
-        ) graph.Vertices
+        ) newGraph.Vertices
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
 
     // Calculates a weighted edge value based on a condition and how many vertices
     // meet that condition a certain number of steps away.
@@ -373,6 +385,8 @@ module WeightedDFS =
         printfn "Changing edge values to weighted score based on condition and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
 
         // For the specified vertex...
         let vert = origin
@@ -380,13 +394,13 @@ module WeightedDFS =
         // Iterate through the adjacent edges first. This is done here
         // since the scores should be applied to these edges (they aren't
         // actually done so yet in this test).
-        Seq.iter (edgeIterator_Condition condition graph vert numSteps) (graph.OutEdges(vert))
+        Seq.iter (edgeIterator_Condition condition newGraph vert numSteps) (newGraph.OutEdges(vert))
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
 
 // Functions that use breadth first search to create a score based on vertices
 // that are deeper in the graph than the edge's target.
@@ -508,6 +522,8 @@ module WeightedBFS =
         printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
 
         // For every vertex in the network...
         Seq.iter (fun (vert : Vert) ->
@@ -517,14 +533,14 @@ module WeightedBFS =
 
             // Iterate through the adjacent edges first, so the scores can be
             // applied to each edge.
-            Seq.iter (edgeIterator_Connections graph vert numSteps) (graph.OutEdges(vert))
-        ) graph.Vertices
+            Seq.iter (edgeIterator_Connections newGraph vert numSteps) (newGraph.OutEdges(vert))
+        ) newGraph.Vertices
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
 
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
@@ -535,6 +551,8 @@ module WeightedBFS =
         printfn "Changing edge values to weighted score based on number of connections and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
 
         // For the specified vertex...
         let vert = origin
@@ -544,13 +562,13 @@ module WeightedBFS =
 
         // Iterate through the adjacent edges first, so the scores can be applied
         // to each edge.
-        Seq.iter (edgeIterator_Connections graph vert numSteps) (graph.OutEdges(vert))
+        Seq.iter (edgeIterator_Connections newGraph vert numSteps) (newGraph.OutEdges(vert))
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
 
     // ------ Breadth first traversal scoring based on a given condition ------
 
@@ -668,6 +686,8 @@ module WeightedBFS =
         printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
 
         // For every vertex in the network...
         Seq.iter (fun (vert : Vert) ->
@@ -677,14 +697,14 @@ module WeightedBFS =
 
             // Iterate through the adjacent edges first, so the scores can be
             // applied to each edge.
-            Seq.iter (edgeIterator_Condition condition graph vert numSteps) (graph.OutEdges(vert))
-        ) graph.Vertices
+            Seq.iter (edgeIterator_Condition condition newGraph vert numSteps) (newGraph.OutEdges(vert))
+        ) newGraph.Vertices
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
 
     // Calculates a weighted edge value based on connectedness, considering
     // vertices that are a certain number of steps away.
@@ -695,6 +715,8 @@ module WeightedBFS =
         printfn "Changing edge values to weighted score based on condition and %i steps (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
+        // Clone the existing graph so that the original one is not modified.
+        let newGraph = deepCloneAppGraph(graph)
 
         // For the specified vertex...
         let vert = origin
@@ -704,10 +726,10 @@ module WeightedBFS =
 
         // Iterate through the adjacent edges first, so the scores can be applied
         // to each edge.
-        Seq.iter (edgeIterator_Condition condition graph vert numSteps) (graph.OutEdges(vert))
+        Seq.iter (edgeIterator_Condition condition newGraph vert numSteps) (newGraph.OutEdges(vert))
 #if LOGGING
         stopWatch.Stop()
         let ms = stopWatch.Elapsed.TotalMilliseconds
         printfn "Changed edge values in %f ms." ms
 #endif
-        graph
+        newGraph
