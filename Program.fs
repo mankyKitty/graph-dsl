@@ -103,94 +103,9 @@ type MoveOp =
     | ForceToVertex of Vert             // Move to the vertex that matches the given tag and value. Can move across backwards edges.
     | MetadataSearch of Query           // Move to the first vertex whose metadata matches the given search query.
     | MetadataSearchMulti of MultiQuery // Move to the first vertex whose metadata matches the given multiple search queries (either all of them via AND, or at least one via OR).
-    | NextMostConnected                 // Move to the vertex with the most outgoing connections connected to the current cursor (that has not already been visited).
+    | NextMostConnected of bool         // Move to the vertex with the most outgoing connections connected to the current cursor (that has not already been visited, if true is sent).
     | NextHighestQueryScore of Query    // Move to the vertex whose edge connecting it to the current vertex has the highest (weighted) score, based on a given query.
-    | NextHighestScore                  // Move to the vertex on the other side of the edge with the highest score connected to the current cursor (that has not already been visited).
-
-// ----------------------------------------------------------------------------
-// ------ Graph creation functions ------
-// ----------------------------------------------------------------------------
-
-// Creates a new edge from the first specified vertex to the second with the
-// specified tag.
-let newEdge (sourceVert: Vert) (targetVert: Vert) (tag: string) : TaggedValueEdge<Vert, string, float> =
-    new TaggedValueEdge<Vert, string, float>(sourceVert,targetVert,tag,ScoringValues.DEFAULT_EDGE_VALUE)
-
-// Creates a new vertex with the specified tag and value.
-let newVert (tag: string) (value: int): Vert =
-    { Tag = tag; Value = value }
-
-// Attempts to add an edge to the graph.
-let tryAddEdge (edge: AppEdge) (graph: AppGraph) =
-    let success = graph.AddEdge(edge)
-    // If the edge add operation returned false (i.e. the edge wasn't added)
-    // then check if the edge is in the graph; this means that the edge was
-    // already in the graph.
-    if (not success) then
-        if (graph.ContainsEdge(edge)) then
-#if LOGGING && VERBOSE
-            printfn "Edge %s (%i) to %s (%i) already exists" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
-#endif
-            graph
-        // Otherwise, the operation failed for another reason and there's a
-        // problem with creating the graph.
-        else
-            printfn "Failed to add edge %s (%i) to %s (%i)" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
-            graph
-    else
-#if LOGGING && VERBOSE
-        printfn "Successfully added edge %s (%i) to %s (%i)" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
-#endif
-        graph
-
-// Attempts to add a avertex to the graph.
-let tryAddVertex (vert: Vert) (graph: AppGraph) =
-    let success = graph.AddVertex(vert)
-    // If the vertex add operation returned false (i.e. the vertex wasn't
-    // added) then check if the vertex is in the graph; this means that the
-    // vertex was already in the graph.
-    if (not success) then
-        if (graph.ContainsVertex(vert)) then
-#if LOGGING && VERBOSE
-            printfn "Vertex %s (%i) already exists" vert.Tag vert.Value
-#endif
-            graph
-        // Otherwise, the operation failed for another reason and there's a
-        // problem with creating the graph.
-        else
-            printfn "Failed to add vertex %s (%i)" vert.Tag vert.Value
-            graph
-    else
-#if LOGGING && VERBOSE
-        printfn "Successfully added vertex %s (%i)" vert.Tag vert.Value
-#endif
-        graph
-
-// Creates a clone of a graph.
-// QuikGraph's clone doesn't seem to make a proper seperate clone so this is
-// used when we want to copy the current graph and modify the clone.
-// This does not copy any scores the original graph has, though.
-let cloneGraph (graph : AppGraph) =
-#if LOGGING
-    printfn "Cloning graph..."
-    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
-#endif
-    let tempGraph = Seq.fold (fun graph (vert : Vert) ->
-        tryAddVertex (newVert vert.Tag vert.Value) graph) (new AppGraph()) graph.Vertices
-#if LOGGING
-    let newGraph = Seq.fold (fun graph (edge : AppEdge) ->
-#else
-    Seq.fold (fun graph (edge : AppEdge) ->
-#endif
-        let source = (newVert edge.Source.Tag edge.Source.Value)
-        let target = (newVert edge.Target.Tag edge.Target.Value)
-        tryAddEdge (newEdge source target edge.Tag) graph) tempGraph graph.Edges
-#if LOGGING
-    stopWatch.Stop()
-    let ms = stopWatch.Elapsed.TotalMilliseconds
-    printfn "Cloned graph in %f ms." ms
-    newGraph
-#endif
+    | NextHighestScore of bool          // Move to the vertex on the other side of the edge with the highest score connected to the current cursor (that has not already been visited, if true is sent).
 
 // ----------------------------------------------------------------------------
 // ------ Graph movement functions ------
@@ -206,9 +121,16 @@ let mkCompOp (comparison: CompOp): (Vert -> bool) =
         | EqualTo (Tag s) -> fun v -> v.Tag = s
         | EqualTo (Value vl) -> fun v -> v.Value = vl
 
+// Function for checking if a vertex is in the history; used in the
+// function below.
+let checkInHistory (zipper : Zipper<Vert, AppEdge> ref) (vertex : Vert) =
+    match Seq.tryFind(fun historyVert -> vertex.Equals(historyVert)) (last ((zipper.Value).HistoryIndex + 1) (zipper.Value).VertHistory) with
+    | Some (result) -> true
+    | None -> false
+
 // Attempts to move to a previously unvisited vertex based upon the highest
 // edge score from the current vertex.
-let findNextHighestScore (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) =
+let findNextHighestScore unvisited (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) =
 
     // Sort the list of edges connected to the current vertex in descending
     // order of their edge score.
@@ -218,22 +140,19 @@ let findNextHighestScore (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref)
     Seq.iter (fun (vertex : Vert) -> printfn "Vertex %s has been visited" vertex.Tag) (last ((zipper.Value).HistoryIndex + 1) (zipper.Value).VertHistory)
 #endif
 
-    // Function for checking if a vertex is in the history; used in the
-    // function below.
-    let checkInHistory (vertex : Vert) =
-        match Seq.tryFind(fun historyVert -> vertex.Equals(historyVert)) (last ((zipper.Value).HistoryIndex + 1) (zipper.Value).VertHistory) with
-        | Some (result) -> true
-        | None -> false
-
-    // Function to check for the first edge in the sorted list whose target
-    // isn't in the history. This will be the edge that is connected to the
-    // next most connected vertex.
+    // Function to check for the first edge in the sorted list. This will be
+    // the edge that is connected to the next most connected vertex.
     let targetEdge =
-        // Find a vertex that's not already in the history.
-        // Also check that the score does not equal zero.
-        match Seq.tryFind (fun (sortedEdge : AppEdge) -> not (checkInHistory sortedEdge.Target) && sortedEdge.Value > 0.0) sortedEdges with
-        | Some (result) -> result
-        | None -> new TaggedValueEdge<Vert, string, float>(newVert "null_1" -1, newVert"null_2" -2,"null",-ScoringValues.DEFAULT_EDGE_VALUE) // This is beccause each side needs to return a value.
+        if (unvisited) then
+            // Find a vertex that's not already in the history.
+            // Also check that the score does not equal zero.
+            match Seq.tryFind (fun (sortedEdge : AppEdge) -> not (checkInHistory zipper sortedEdge.Target) && sortedEdge.Value > 0.0) sortedEdges with
+            | Some (result) -> result
+            | None -> new TaggedValueEdge<Vert, string, float>(newVert "null_1" -1, newVert"null_2" -2,"null",-1) // This is beccause each side needs to return a value.
+        else
+            match Seq.tryFind (fun (sortedEdge : AppEdge) -> sortedEdge.Value > 0.0) sortedEdges with
+            | Some (result) -> result
+            | None -> new TaggedValueEdge<Vert, string, float>(newVert "null_1" -1, newVert"null_2" -2,"null",-1) // This is beccause each side needs to return a value.
 
     // Create the function to test for true or false on an edge.
     let filterQuery (edge : AppEdge) =
@@ -252,61 +171,39 @@ let findNextHighestScore (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref)
 
 // Attempts to move to the connected vertex that has the most outgoing
 // connections.
-let findNextMostConnected (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) =
+let findNextMostConnected unvisited (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) =
 
     let currentCursor = (zipper.Value).Cursor
 
-    let tempGraph = cloneGraph graph
-
     // Calculate the edge values for this operation.
-                    |> Basic.calculateEdgeValues_ConnectionsSingle currentCursor (*graph*)
+    let tempGraph = Basic.calculateEdgeValues_ConnectionsSingle currentCursor graph
 
     // Call the function for moving to the vertex connected to the edge with
     // the highest score (which hasn't been visited yet).
-    let result = findNextHighestScore graph zipper
-
-    // Reset the edge values (according to the orignal cursor location).
-(*#if DEBUG
-    WeightedBFS.calculateEdgeValues_ConnectionsSingle ScoringValues.NUM_SCORE_STEPS currentCursor graph
-#else
-    WeightedDFS.calculateEdgeValues_ConnectionsSingle ScoringValues.NUM_SCORE_STEPS currentCursor true graph
-#endif*)
-
-    result
+    findNextHighestScore unvisited tempGraph zipper
 
 // ------ Functions for moving based on graph metadata. ------
 
 // Attempts to move to a connected vertex that is "most relevant" to a
 // particular query. Essentially, a weighted score is calculated for each
 // outgoing edge for four steps away from the initial vertex, with higher
-// weightings for closer vertices to the starting point (that fulfil the
+// weightings for closer vertices to the starting point (that fulfils the
 // query condition), and the zipper will travel down the edge that has the
 // greatest score.
 let findNextHighestQueryScore(graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) condition =
 
     let currentCursor = (zipper.Value).Cursor
 
-    let tempGraph = cloneGraph graph
-
     // Calculate the edge values for this operation.
 #if DEBUG
-                    |> WeightedBFS.calculateEdgeValues_ConditionSingle condition ScoringValues.NUM_SCORE_STEPS currentCursor (*graph*)
+    let tempGraph = WeightedBFS.calculateEdgeValues_ConditionSingle condition ScoringValues.NUM_SCORE_STEPS currentCursor graph
 #else
-                    |> WeightedDFS.calculateEdgeValues_ConditionSingle condition ScoringValues.NUM_SCORE_STEPS currentCursor
+    let tempGraph = WeightedDFS.calculateEdgeValues_ConditionSingle condition ScoringValues.NUM_SCORE_STEPS currentCursor graph
 #endif
 
     // Call the function for moving to the vertex connected to the edge with
-    // the highest score (which hasn't been visited yet).
-    let result = findNextHighestScore graph zipper
-
-    // Reset the edge values (according to the orignal cursor location).
-(*#if DEBUG
-    WeightedBFS.calculateEdgeValues_ConnectionsSingle ScoringValues.NUM_SCORE_STEPS currentCursor graph
-#else
-    WeightedDFS.calculateEdgeValues_ConnectionsSingle ScoringValues.NUM_SCORE_STEPS currentCursor true graph
-#endif*)
-
-    result
+    // the highest score.
+    findNextHighestScore false tempGraph zipper
 
 // Checks if the supplied query makes a match in the supplied metadata row.
 let SearchMetadata (row : Map<string, string>) query =
@@ -387,11 +284,11 @@ let generateFreshGraph (): AppGraph =
                 |> tryAddVertex vfortytwo
 
     // Attempt to add edges to the graph.
-                |> tryAddEdge (newEdge vzero vone "add_one")
-                |> tryAddEdge (newEdge vzero vtwo "add_two")
-                |> tryAddEdge (newEdge vtwo vthree "two_three")
-                |> tryAddEdge (newEdge vone vthree "one_three")
-                |> tryAddEdge (newEdge vthree vfortytwo "end")
+                |> tryAddEdge (newEdge vzero vone "add_one" ScoringValues.DEFAULT_EDGE_VALUE)
+                |> tryAddEdge (newEdge vzero vtwo "add_two" ScoringValues.DEFAULT_EDGE_VALUE)
+                |> tryAddEdge (newEdge vtwo vthree "two_three" ScoringValues.DEFAULT_EDGE_VALUE)
+                |> tryAddEdge (newEdge vone vthree "one_three" ScoringValues.DEFAULT_EDGE_VALUE)
+                |> tryAddEdge (newEdge vthree vfortytwo "end" ScoringValues.DEFAULT_EDGE_VALUE)
 
     // Go through all the edges in the graph, and set their value to the number
     // of connected edges of the target vertex.
@@ -462,7 +359,7 @@ let moveRoute metadata graph (zipper : Zipper<Vert, AppEdge> ref) request =
     let moveRes = match moveOp with
                     // Standard operations:
                     | ToVertex vval -> moveToVertex (graph, zipper.Value, vval)
-                    | AlongEdge edge -> moveAlongEdge (graph, zipper.Value, (newEdge (newVert "dummy" -1) (newVert "dummy" -2) edge))
+                    | AlongEdge edge -> moveAlongEdge (graph, zipper.Value, (newEdge (newVert "dummy" -1) (newVert "dummy" -2) edge -1))
                     | FirstEdge s -> moveAlongFirstMatchingEdge(graph, zipper.Value, (fun ve -> ve.Tag = s))
                     | FirstVertex co -> moveAlongFirstMatchingVertex(graph, zipper.Value, mkCompOp co)
                     // History operations:
@@ -473,9 +370,9 @@ let moveRoute metadata graph (zipper : Zipper<Vert, AppEdge> ref) request =
                     | ForceToVertex vval -> forceMoveToVertex (graph, zipper.Value, vval)
                     | MetadataSearch query -> findFirstWithMetadata metadata graph zipper query
                     | MetadataSearchMulti queryList -> findFirstWithMetadataMulti metadata graph zipper queryList
-                    | NextMostConnected -> findNextMostConnected graph zipper
+                    | NextMostConnected unvisited -> findNextMostConnected unvisited graph zipper
                     | NextHighestQueryScore query -> findNextHighestQueryScore graph zipper ((findFirstWithMetadata_filter metadata) query)
-                    | NextHighestScore -> findNextHighestScore graph zipper
+                    | NextHighestScore unvisited -> findNextHighestScore unvisited graph zipper
 
     // Attempt to complete the move operation.
     match moveRes with
@@ -517,9 +414,9 @@ let setCORSHeaders =
     >=> addHeader "Access-Control-Allow-Headers" "content-type"
 
 // Returns the graph's metadata.
-let getMetadataRoute _request =
+let getMetadataRoute metadata _request =
     printfn "Received getMetadata operation."
-    OK (Json.serialize (GenerateExampleMetadata()))
+    OK (Json.serialize metadata)
 
 // Returns all the vertices in the current graph.
 let getVerticesRoute (graph : AppGraph) _request =
@@ -534,59 +431,47 @@ let getEdgesRoute (graph : AppGraph) _request =
 
 // Handles the routes for the example.
 let app graph zipper =
+
+    // Generate the metadata for this example, as it's used in moveRoute and
+    // getMetadataRoute.
+    let metadata = GenerateExampleMetadata()
     choose
 
-      // Request to move the current zipper cursor.
+    // POST requests
       [ POST >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
-          [ path "/move" >=> request (moveRoute (GenerateExampleMetadata()) graph zipper) ] )
+      // Request to move the current zipper cursor.
+          [ path "/move" >=> request (moveRoute metadata graph zipper) ] )
 
-        // Request to return the current zipper cursor.
+    // GET requests
         GET >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
-          [ path "/getLocation" >=> request (locationRoute zipper) ] )
+          [
+        // Request to return the current zipper cursor.
+            path "/getLocation" >=> request (locationRoute zipper)
 
         // Request to show all valid destinations from the current zipper
         // cursor.
-        GET >=> fun context ->
-                context |> (
-                    setCORSHeaders
-                    >=> choose
-          [ path "/getDestinations" >=> request (connectedRoute graph zipper) ] )
+            path "/getDestinations" >=> request (connectedRoute graph zipper)
 
         // Request to return the current zipper cursor and all vertices
         // connected to it. Includes vertices that have an ingoing edge to
         // the current cursor.
-        GET >=> fun context ->
-                context |> (
-                    setCORSHeaders
-                    >=> choose
-          [ path "/getGraph" >=> request (getGraphRoute graph zipper) ] )
+            path "/getGraph" >=> request (getGraphRoute graph zipper)
 
         // Request to get the metadata for the graph.
-        GET >=> fun context ->
-                context |> (
-                    setCORSHeaders
-                    >=> choose
-          [ path "/getMetadata" >=> request (getMetadataRoute)] )
+            path "/getMetadata" >=> request (getMetadataRoute metadata)
 
         // Request to get a list of all vertices in the current graph.
-        GET >=> fun context ->
-                context |> (
-                    setCORSHeaders
-                    >=> choose
-          [ path "/getVertices" >=> request (getVerticesRoute graph) ] )
+            path "/getVertices" >=> request (getVerticesRoute graph)
 
         // Request to get a list of all edges in the current graph.
-        GET >=> fun context ->
-                context |> (
-                    setCORSHeaders
-                    >=> choose
-          [ path "/getEdges" >=> request (getEdgesRoute graph) ] ) ]
+            path "/getEdges" >=> request (getEdgesRoute graph)
+        ] ) ]
 
 // Example curl commands (Linux):
 // ToVertex:
@@ -600,7 +485,7 @@ let app graph zipper =
 // MetadataSearchMulti (OR):
 // $ curl -X POST -vvv --data '{"moveOp":"MetadataSearchMulti","moveInputs":{"Operation":"OR","Queries":[{"Property":"Synonyms","Value":"child"},{"Property":"Name","Value":"two"}]}}' http://localhost:8080/move
 // NextMostConnected:
-// $ curl -X POST -vvv --data '{"moveOp":"NextMostConnected","moveInputs":[]}' http://localhost:8080/move
+// $ curl -X POST -vvv --data '{"moveOp":"NextMostConnected","moveInputs":true}' http://localhost:8080/move
 // Forward:
 // $ curl -X POST -vvv --data '{"moveOp":"Forward","moveInputs":[]}' http://localhost:8080/move
 // GoToHistory:
@@ -608,7 +493,7 @@ let app graph zipper =
 // NextHighestQueryScore:
 // $ curl -X POST -vvv --data '{"moveOp":"NextMostConnected","moveInputs":{"Property":"Synonyms","Value":"child"}}' http://localhost:8080/move
 // NextHighestScore:
-// $ curl -X POST -vvv --data '{"moveOp":"NextHighestScore","moveInputs":[]}' http://localhost:8080/move
+// $ curl -X POST -vvv --data '{"moveOp":"NextHighestScore","moveInputs":true}' http://localhost:8080/move
 
 // Example curl commands (Windows):
 // ToVertex:
@@ -622,7 +507,7 @@ let app graph zipper =
 // MetadataSearchMulti (OR):
 // curl -X POST -vvv --data {\"moveOp\":\"MetadataSearchMulti\",\"moveInputs\":{\"Operation\":\"OR\",\"Queries\":[{\"Property\":\"Synonyms\",\"Value\":\"child\"},{\"Property\":\"Name\",\"Value\":\"two\"}]}} http://localhost:8080/move
 // NextMostConnected:
-// curl -X POST -vvv --data {\"moveOp\":\"NextMostConnected\",\"moveInputs\":[]} http://localhost:8080/move
+// curl -X POST -vvv --data {\"moveOp\":\"NextMostConnected\",\"moveInputs\":true} http://localhost:8080/move
 // Forward:
 // curl -X POST -vvv --data {\"moveOp\":\"Forward\",\"moveInputs\":[]} http://localhost:8080/move
 // GoToHistory:
@@ -630,12 +515,12 @@ let app graph zipper =
 // NextHighestQueryScore:
 // curl -X POST -vvv --data {\"moveOp\":\"NextMostConnected\",\"moveInputs\":{\"Property\":\"Synonyms\",\"Value\":\"child\"}}} http://localhost:8080/move
 // NextHighestScore:
-// curl -X POST -vvv --data {\"moveOp\":\"NextHighestScore\",\"moveInputs\":[]} http://localhost:8080/move
+// curl -X POST -vvv --data {\"moveOp\":\"NextHighestScore\",\"moveInputs\":true} http://localhost:8080/move
 [<EntryPoint>]
 // Main function for the example serer. Creates a graph and zipper and uses
 // them to start the web server with the specified configuration.
 let main argv =
-    let mutable graph = generateFreshGraph()
+    let graph = generateFreshGraph()
 #if LOGGING
     printfn "Created a graph with %i vertices and %i edges." (graph.VertexCount) (graph.EdgeCount)
 #endif
