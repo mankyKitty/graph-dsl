@@ -198,7 +198,7 @@ module WeightedDFS =
     // counting vertices more than once.)
     let calculateEdgeValues_Connections numSteps uniqueOnly (graph : AppGraph) =
 #if LOGGING
-        printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
+        printfn "Changing edge values to weighted score based on number of connections and %i steps, using depth first search..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
         // Clone the existing graph so that the original one is not modified.
@@ -235,7 +235,7 @@ module WeightedDFS =
     // This version only calculates for a specified origin vertex.
     let calculateEdgeValues_ConnectionsSingle numSteps (origin : Vert) uniqueOnly (graph : AppGraph) =
 #if LOGGING
-        printfn "Changing edge values to weighted score based on number of connections and %i steps (from %s only)..." numSteps origin.Tag
+        printfn "Changing edge values to weighted score based on number of connections and %i steps, using depth first search (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
         // Clone the existing graph so that the original one is not modified.
@@ -350,7 +350,7 @@ module WeightedDFS =
     // counting vertices more than once.)
     let calculateEdgeValues_Condition condition numSteps (graph : AppGraph) =
 #if LOGGING
-        printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
+        printfn "Changing edge values to weighted score based on condition and %i steps, using depth first search..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
         // Clone the existing graph so that the original one is not modified.
@@ -382,7 +382,7 @@ module WeightedDFS =
     // This version only calculates for a specified origin vertex.
     let calculateEdgeValues_ConditionSingle condition numSteps (origin : Vert) (graph : AppGraph) =
 #if LOGGING
-        printfn "Changing edge values to weighted score based on condition and %i steps (from %s only)..." numSteps origin.Tag
+        printfn "Changing edge values to weighted score based on condition and %i steps, using depth first search (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
         // Clone the existing graph so that the original one is not modified.
@@ -519,7 +519,7 @@ module WeightedBFS =
     // Uses QuikGraph's breadth-first search function.
     let calculateEdgeValues_Connections numSteps (graph : AppGraph) =
 #if LOGGING
-        printfn "Changing edge values to weighted score based on number of connections and %i steps..." numSteps
+        printfn "Changing edge values to weighted score based on number of connections and %i steps, using breadth first search..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
         // Clone the existing graph so that the original one is not modified.
@@ -548,7 +548,7 @@ module WeightedBFS =
     // This version only calculates for a specified origin vertex.
     let calculateEdgeValues_ConnectionsSingle numSteps (origin : Vert) (graph : AppGraph) =
 #if LOGGING
-        printfn "Changing edge values to weighted score based on number of connections and %i steps (from %s only)..." numSteps origin.Tag
+        printfn "Changing edge values to weighted score based on number of connections and %i steps, using breadth first search (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
         // Clone the existing graph so that the original one is not modified.
@@ -683,7 +683,7 @@ module WeightedBFS =
     // Uses QuikGraph's breadth-first search function.
     let calculateEdgeValues_Condition condition numSteps (graph : AppGraph) =
 #if LOGGING
-        printfn "Changing edge values to weighted score based on condition and %i steps..." numSteps
+        printfn "Changing edge values to weighted score based on condition and %i steps, using breadth first search..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
         // Clone the existing graph so that the original one is not modified.
@@ -712,7 +712,7 @@ module WeightedBFS =
     // This version only calculates for a specified origin vertex.
     let calculateEdgeValues_ConditionSingle condition numSteps (origin : Vert) (graph : AppGraph) =
 #if LOGGING
-        printfn "Changing edge values to weighted score based on condition and %i steps (from %s only)..." numSteps origin.Tag
+        printfn "Changing edge values to weighted score based on condition and %i steps, using breadth first search (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
         // Clone the existing graph so that the original one is not modified.

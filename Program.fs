@@ -146,17 +146,15 @@ let findNextHighestScore unvisited (graph : AppGraph) (zipper : Zipper<Vert, App
         if (unvisited) then
             // Find a vertex that's not already in the history.
             // Also check that the score does not equal zero.
-            match Seq.tryFind (fun (sortedEdge : AppEdge) -> not (checkInHistory zipper sortedEdge.Target) && sortedEdge.Value > 0.0) sortedEdges with
-            | Some (result) -> result
-            | None -> new TaggedValueEdge<Vert, string, float>(newVert "null_1" -1, newVert"null_2" -2,"null",-1) // This is beccause each side needs to return a value.
+            Seq.tryFind (fun (sortedEdge : AppEdge) -> not (checkInHistory zipper sortedEdge.Target) && sortedEdge.Value > 0.0) sortedEdges
         else
-            match Seq.tryFind (fun (sortedEdge : AppEdge) -> sortedEdge.Value > 0.0) sortedEdges with
-            | Some (result) -> result
-            | None -> new TaggedValueEdge<Vert, string, float>(newVert "null_1" -1, newVert"null_2" -2,"null",-1) // This is beccause each side needs to return a value.
+            Seq.tryFind (fun (sortedEdge : AppEdge) -> sortedEdge.Value > 0.0) sortedEdges
 
     // Create the function to test for true or false on an edge.
-    let filterQuery (edge : AppEdge) =
-        edge.Equals(targetEdge)
+    let filterQuery (currentEdge : AppEdge) =
+        match targetEdge with
+        | Some edge -> currentEdge.Equals(edge)
+        | None -> false
 
     // Call the movement function for a matching edge.
     let result = moveAlongFirstMatchingEdge(graph, zipper.Value, filterQuery)
@@ -195,10 +193,10 @@ let findNextHighestQueryScore(graph : AppGraph) (zipper : Zipper<Vert, AppEdge> 
     let currentCursor = (zipper.Value).Cursor
 
     // Calculate the edge values for this operation.
-#if DEBUG
-    let tempGraph = WeightedBFS.calculateEdgeValues_ConditionSingle condition ScoringValues.NUM_SCORE_STEPS currentCursor graph
-#else
+#if USE_DFS
     let tempGraph = WeightedDFS.calculateEdgeValues_ConditionSingle condition ScoringValues.NUM_SCORE_STEPS currentCursor graph
+#else
+    let tempGraph = WeightedBFS.calculateEdgeValues_ConditionSingle condition ScoringValues.NUM_SCORE_STEPS currentCursor graph
 #endif
 
     // Call the function for moving to the vertex connected to the edge with
@@ -293,10 +291,10 @@ let generateFreshGraph (): AppGraph =
     // Go through all the edges in the graph, and set their value to the number
     // of connected edges of the target vertex.
     //calculateEdgeValues_Connections(g)
-#if DEBUG
-                |> WeightedBFS.calculateEdgeValues_Connections ScoringValues.NUM_SCORE_STEPS
-#else
+#if USE_DFS
                 |> WeightedDFS.calculateEdgeValues_Connections ScoringValues.NUM_SCORE_STEPS true
+#else
+                |> WeightedBFS.calculateEdgeValues_Connections ScoringValues.NUM_SCORE_STEPS
 #endif
 
     // Return the completed graph.
@@ -353,7 +351,7 @@ let moveRoute metadata graph (zipper : Zipper<Vert, AppEdge> ref) request =
       |> UTF8.toString
       |> Json.deserialize<MoveOp>
 
-    printfn "Received move operation: %s" (moveOp.ToString())
+    printfn "Received move operation: %s" (string moveOp)
 
     // Determine the move operation to use.
     let moveRes = match moveOp with
@@ -365,7 +363,7 @@ let moveRoute metadata graph (zipper : Zipper<Vert, AppEdge> ref) request =
                     // History operations:
                     | Back -> Some(moveBack zipper.Value)
                     | Forward -> Some(moveForward zipper.Value)
-                    | GoToHistory i -> Some(moveToHistoryIndex zipper.Value i)
+                    | GoToHistory i -> Some(moveToHistoryIndex i zipper.Value)
                     // Special operations
                     | ForceToVertex vval -> forceMoveToVertex (graph, zipper.Value, vval)
                     | MetadataSearch query -> findFirstWithMetadata metadata graph zipper query
@@ -437,41 +435,41 @@ let app graph zipper =
     let metadata = GenerateExampleMetadata()
     choose
 
-    // POST requests
-      [ POST >=> fun context ->
+        // POST requests
+        [ POST >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
-      // Request to move the current zipper cursor.
-          [ path "/move" >=> request (moveRoute metadata graph zipper) ] )
+            // Request to move the current zipper cursor.
+            [ path "/move" >=> request (moveRoute metadata graph zipper) ] )
 
-    // GET requests
-        GET >=> fun context ->
+        // GET requests
+          GET >=> fun context ->
                 context |> (
                     setCORSHeaders
                     >=> choose
-          [
-        // Request to return the current zipper cursor.
-            path "/getLocation" >=> request (locationRoute zipper)
+            [
+                // Request to return the current zipper cursor.
+                path "/getLocation" >=> request (locationRoute zipper)
 
-        // Request to show all valid destinations from the current zipper
-        // cursor.
-            path "/getDestinations" >=> request (connectedRoute graph zipper)
+                // Request to show all valid destinations from the current
+                // zipper cursor.
+                path "/getDestinations" >=> request (connectedRoute graph zipper)
 
-        // Request to return the current zipper cursor and all vertices
-        // connected to it. Includes vertices that have an ingoing edge to
-        // the current cursor.
-            path "/getGraph" >=> request (getGraphRoute graph zipper)
+                // Request to return the current zipper cursor and all vertices
+                // connected to it. Includes vertices that have an ingoing edge
+                // to the current cursor.
+                path "/getGraph" >=> request (getGraphRoute graph zipper)
 
-        // Request to get the metadata for the graph.
-            path "/getMetadata" >=> request (getMetadataRoute metadata)
+                // Request to get the metadata for the graph.
+                path "/getMetadata" >=> request (getMetadataRoute metadata)
 
-        // Request to get a list of all vertices in the current graph.
-            path "/getVertices" >=> request (getVerticesRoute graph)
+                // Request to get a list of all vertices in the current graph.
+                path "/getVertices" >=> request (getVerticesRoute graph)
 
-        // Request to get a list of all edges in the current graph.
-            path "/getEdges" >=> request (getEdgesRoute graph)
-        ] ) ]
+                // Request to get a list of all edges in the current graph.
+                path "/getEdges" >=> request (getEdgesRoute graph)
+            ] ) ]
 
 // Example curl commands (Linux):
 // ToVertex:

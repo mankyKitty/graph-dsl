@@ -90,7 +90,7 @@ let moveAlongFirstMatchingVertex
 // If given a integer higher than the number of history entries, defaults to
 // the last history item, and defaults to the starting vertex if given a
 // negative integer.
-let moveToHistoryIndex (z: Zipper<'V, 'E>) i : Zipper<'V, 'E> =
+let moveToHistoryIndex i (z: Zipper<'V, 'E>) : Zipper<'V, 'E> =
     // Thanks to the vertex list, we can just jump to the vertex directly - no
     // need to interpret the move history list.
     let newZ =
@@ -122,7 +122,7 @@ let moveToHistoryIndex (z: Zipper<'V, 'E>) i : Zipper<'V, 'E> =
 // moveToHistoryIndex function instead of a complex match in the movement
 // history.
 let moveBack (z: Zipper<'V, 'E>) : Zipper<'V, 'E> =
-    moveToHistoryIndex z (z.HistoryIndex - 1)
+    moveToHistoryIndex (z.HistoryIndex - 1) z 
 
 // A helper function to perform a given movement on the graph and record that
 // in the history.
@@ -158,4 +158,4 @@ let forceMoveToVertex (g: BidirectionalGraph<'V, 'E>, z: Zipper<'V, 'E>, v: 'V) 
 // Essentially uses moveToHistoryIndex to move one higher than the current
 // history index.
 let moveForward (z: Zipper<'V, 'E>) : Zipper<'V, 'E> =
-    moveToHistoryIndex z (z.HistoryIndex + 1)
+    moveToHistoryIndex (z.HistoryIndex + 1) z
