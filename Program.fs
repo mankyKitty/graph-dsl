@@ -457,8 +457,8 @@ let app graph zipper =
                 path "/getDestinations" >=> request (connectedRoute graph zipper)
 
                 // Request to return the current zipper cursor and all vertices
-                // connected to it. Includes vertices that have an ingoing edge
-                // to the current cursor.
+                // connected to it. Includes vertices that have an incoming
+                // edge to the current cursor.
                 path "/getGraph" >=> request (getGraphRoute graph zipper)
 
                 // Request to get the metadata for the graph.
