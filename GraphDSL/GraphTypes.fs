@@ -44,6 +44,16 @@ type TaggedValueEdge<'Vertex, 'Tag, 'Value>(source : 'Vertex, target : 'Vertex, 
     [<CLIEvent>]
     member this.ValueChanged = valueChanged.Publish
 
+    // Returns an anonymous record version of the edge, for export into JSON
+    // (as FSharp.Json can't serialize an edge on its own.)
+    member this.ToRecord () =
+        {|
+            Source = this.Source;
+            Target = this.Target;
+            Tag = this.Tag;
+            Value = this.Value;
+        |}
+
 // Specifies the vertex used for the bidirectional graph. Each vertex has a
 // string tag to name it, and a integer value that is used as an identifier.
 type Vert =
@@ -73,55 +83,49 @@ let newVert tag value : Vert =
 
 // Attempts to add an edge to the graph.
 let tryAddEdge (edge: AppEdge) (graph: AppGraph) =
-    let newGraph = graph.Clone()
-    let success = newGraph.AddEdge(edge)
-    // If the edge add operation returned false (i.e. the edge wasn't added)
-    // then check if the edge is in the graph; this means that the edge was
-    // already in the graph.
-    if (not success) then
-        if (newGraph.ContainsEdge(edge)) then
+    if (graph.ContainsEdge(edge)) then
 #if LOGGING && VERBOSE
-            printfn "Edge %s (%i) to %s (%i) already exists" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
+        printfn "Edge %s (%i) to %s (%i) is already in the graph" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
 #endif
-            newGraph
-        // Otherwise, the operation failed for another reason and there's a
-        // problem with creating the graph.
-        else
-            printfn "Failed to add edge %s (%i) to %s (%i)" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
-            newGraph
+        graph
     else
+        let newGraph = graph.Clone()
+        let success = newGraph.AddEdge(edge)
+        // If the edge add operation returned false, the edge wasn't added.
+        if (not success) then
+            printfn "Failed to add edge %s (%i) to %s (%i)" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
+
+            // Return the original graph in this case.
+            graph
+        else
 #if LOGGING && VERBOSE
-        printfn "Successfully added edge %s (%i) to %s (%i)" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
-        //printfn "Original graph has %i edges" (Seq.length graph.Edges)
-        //printfn "New graph has %i edges" (Seq.length newGraph.Edges)
+            printfn "Successfully added edge %s (%i) to %s (%i)" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
 #endif
-        newGraph
+            newGraph
 
 // Attempts to add a avertex to the graph.
 let tryAddVertex (vert: Vert) (graph: AppGraph) =
-    let newGraph = graph.Clone()
-    let success = newGraph.AddVertex(vert)
-    // If the vertex add operation returned false (i.e. the vertex wasn't
-    // added) then check if the vertex is in the graph; this means that the
-    // vertex was already in the graph.
-    if (not success) then
-        if (newGraph.ContainsVertex(vert)) then
+    // Check if the vertex already exists first, and if it does, return
+    // immediately with the existing graph.
+    if (graph.ContainsVertex(vert)) then
 #if LOGGING && VERBOSE
-            printfn "Vertex %s (%i) already exists" vert.Tag vert.Value
+        printfn "Vertex %s (%i) is already in the graph" vert.Tag vert.Value
 #endif
-            newGraph
-        // Otherwise, the operation failed for another reason and there's a
-        // problem with creating the graph.
-        else
-            printfn "Failed to add vertex %s (%i)" vert.Tag vert.Value
-            newGraph
+        graph
     else
+        let newGraph = graph.Clone()
+        let success = newGraph.AddVertex(vert)
+        // If the vertex add operation returned false, the vertex wasn't added.
+        if (not success) then
+            printfn "Failed to add vertex %s (%i)" vert.Tag vert.Value
+
+            // Return the original graph in this case.
+            graph
+        else
 #if LOGGING && VERBOSE
-        printfn "Successfully added vertex %s (%i)" vert.Tag vert.Value
-        //printfn "Original graph has %i vertices" (Seq.length graph.Vertices)
-        //printfn "New graph has %i vertices" (Seq.length newGraph.Vertices)
+            printfn "Successfully added vertex %s (%i)" vert.Tag vert.Value
 #endif
-        newGraph
+            newGraph
 
 // Creates a clone of a graph.
 // QuikGraph's clone doesn't create new instances of the vertices and edges

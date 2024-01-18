@@ -66,7 +66,7 @@ window.onload = function() {
         } else if (err !== null) {
             alert('Could not perform a move action:\nHTTP status code was ' + err);
         } else {
-            getJSON('http://localhost:8080/getGraph', graphRequestHandler);
+            getJSON('http://localhost:8080/getCursorSurrounds', graphRequestHandler);
         }
     };
 
@@ -260,11 +260,11 @@ window.onload = function() {
         // Go through all the edges and add any nodes that aren't in the node
         // data yet.
         for (edge of sourceData.Edges) {
-            if (nodeData.find((item) => item.id === edge.End.Value) === undefined) {
-                nodeData.push({id: edge.End.Value, label: edge.End.Tag});
+            if (nodeData.find((item) => item.id === edge.Target.Value) === undefined) {
+                nodeData.push({id: edge.Target.Value, label: edge.Target.Tag});
             }
-            if (nodeData.find((item) => item.id === edge.Start.Value) === undefined) {
-                nodeData.push({id: edge.Start.Value, label: edge.Start.Tag});
+            if (nodeData.find((item) => item.id === edge.Source.Value) === undefined) {
+                nodeData.push({id: edge.Source.Value, label: edge.Source.Tag});
             }
         }
 
@@ -274,7 +274,7 @@ window.onload = function() {
             // The basic edge object consists of an originating node ("from")
             // and a terminating node ("to"). These should correspond to a node
             // id.
-            let currentEdge = { from: edge.Start.Value, to: edge.End.Value }
+            let currentEdge = { from: edge.Source.Value, to: edge.Target.Value }
 
             // Colour the edge red if it's pointing to the cursor, otherwise
             // colour it green.
@@ -538,7 +538,7 @@ window.onload = function() {
     };
 
     // Get the initial network data from the server.
-    getJSON('http://localhost:8080/getGraph', graphRequestHandler);
+    getJSON('http://localhost:8080/getCursorSurrounds', graphRequestHandler);
 
     // Clicking on the back button.
     backButton.addEventListener('click', function() {
@@ -600,26 +600,21 @@ window.onload = function() {
             overviewNetwork = null;
         }
 
-        // Start collecting the data for nodes.
-        // Go through all the edges and add any nodes that aren't in the node
-        // data yet.
+        // Go through all the vertices and add them to the vertex data array.
         let nodeData = [];
-        for (edge of sourceData) {
-            if (nodeData.find((item) => item.id === edge.End.Value) === undefined) {
-                nodeData.push({id: edge.End.Value, label: edge.End.Tag});
-            }
-            if (nodeData.find((item) => item.id === edge.Start.Value) === undefined) {
-                nodeData.push({id: edge.Start.Value, label: edge.Start.Tag});
+        for (vertex of sourceData.Vertices) {
+            if (nodeData.find((item) => item.id === vertex.Value) === undefined) {
+                nodeData.push({id: vertex.Value, label: vertex.Tag});
             }
         }
 
-        // Create an array for the edge data to use later.
+        // Go through all the edges and add them to the edge data array.
         let edgeData = [];
-        for (edge of sourceData) {
+        for (edge of sourceData.Edges) {
             // The basic edge object consists of an originating node ("from")
             // and a terminating node ("to"). These should correspond to a node
             // id.
-            let currentEdge = { from: edge.Start.Value, to: edge.End.Value }
+            let currentEdge = { from: edge.Source.Value, to: edge.Target.Value }
 
             // Colour the edge red if it's pointing to the cursor, otherwise
             // colour it green.
@@ -687,6 +682,48 @@ window.onload = function() {
         // Initialize your network!
         overviewNetwork = new vis.Network(container, data, options);
         overviewNetwork.stabilize(60);
+
+        // Position any vertices that do not have any connections around the
+        // outside of the network in a circle.
+        let unconnectedNodes = [];
+        let maxDistance = 0;
+
+        // First, find the vertices that don't have any connections. Also find
+        // the largest x or y distance that any node has, so we can go outside
+        // of it.
+        for (node of nodeData) {
+            if (overviewNetwork.getConnectedNodes(node.id).length < 1) {
+                unconnectedNodes.push(node.id);
+            }
+            let position = overviewNetwork.getPosition(node.id);
+            maxDistance = Math.max(maxDistance, position.x, position.y)
+        };
+
+        // If there's at least one unconnected node...
+        if (unconnectedNodes.length > 0) {
+
+            // Calculate the radius based on the maximum distance.
+            const radius = maxDistance + 100
+
+            // If there's only one, position it directly on the left.
+            if (unconnectedNodes.length === 1) {
+                overviewNetwork.moveNode(unconnectedNodes[0], radius, 0);
+            } else {
+
+                // Calculate the angle between each unconnected node, which should be
+                // even between them.
+                const angle = (2 * Math.PI) / (unconnectedNodes.length)
+
+                // For every unconnected node, position it in the conrrect
+                // position in the circle.
+                let counter = 0;
+                for (id of unconnectedNodes) {
+                    console.log(`Placing ${id} at ${radius * Math.cos(counter * angle)}, ${radius * Math.sin(counter * angle)}`);
+                    overviewNetwork.moveNode(id, radius * Math.cos(counter * angle), radius * Math.sin(counter * angle));
+                    counter++;
+                }
+            }
+        }
 
         // Callback function to apply metadata to nodes.
         let applyMetadata = function(data) {
@@ -778,6 +815,6 @@ window.onload = function() {
         }
     };
 
-    // Call server for the edges JSON.
-    getJSON('http://localhost:8080/getEdges', overviewRequestHandler);
+    // Call server for the graph JSON.
+    getJSON('http://localhost:8080/getGraph', overviewRequestHandler);
 };

@@ -34,27 +34,6 @@ type CompOp =
     | ValueLessThan of int
     | ValueGreaterThan of int
 
-// A record type for storing an edge to be converted to JSON.
-type MiniJsonEdge = {
-    Start : Vert
-    End : Vert
-    Tag : string
-    Value : float
-}
-
-// A record type with a list of the above edge types to show what edges are
-// connected to a vertex.
-type ConnectedEdges = {
-    Edges : MiniJsonEdge list
-}
-
-// Version of the above that includes the source vertex, used to create a graph
-// in a visualisation.
-type MiniGraph = {
-    Vertex : Vert
-    Edges : MiniJsonEdge list
-}
-
 // Data used in a MetadataSearch move request.
 type Query =
     { Property: string
@@ -77,14 +56,6 @@ type ExampleInfo = {
     Id : string;
     Name : string;
     Synonyms : string list;
-}
-
-// MiniGraph type that allows for zipper history being sent with it.
-type MiniGraphMetadata = {
-    Vertex : Vert
-    Edges : MiniJsonEdge list
-    History : Vert list
-    HistoryIndex : int
 }
 
 // Our boundary types are different to the internal zipper types so there isn't conceptual leakage between the two.
@@ -272,6 +243,7 @@ let generateFreshGraph (): AppGraph =
     let vtwo = newVert "two" 2
     let vthree = newVert "three" 3
     let vfortytwo = newVert "forty-two" 42
+    let visolated = newVert "nine-thousand-and-one" 9001
 
     // Attempt to add the vertices to the graph.
     let graph = new AppGraph ()
@@ -280,6 +252,7 @@ let generateFreshGraph (): AppGraph =
                 |> tryAddVertex vtwo
                 |> tryAddVertex vthree
                 |> tryAddVertex vfortytwo
+                |> tryAddVertex visolated
 
     // Attempt to add edges to the graph.
                 |> tryAddEdge (newEdge vzero vone "add_one" ScoringValues.DEFAULT_EDGE_VALUE)
@@ -329,6 +302,11 @@ let GenerateExampleMetadata () =
             Id = "42";
             Name = "forty-two";
             Synonyms = ["The Answer to the Ultimate Question of Life, the Universe, and Everything"; "Forty-two"]
+        };
+        {
+            Id = "9001";
+            Name = "nine-thousand-and-one";
+            Synonyms = ["Isolated vertex"; "Over nine thousand"]
         }
     ]
 
@@ -342,6 +320,15 @@ let GenerateExampleMetadata () =
 // ----------------------------------------------------------------------------
 // ------ Server functions ------
 // ----------------------------------------------------------------------------
+
+// Adds CORS headers to allow cross origin requests.
+// This is required for NetworkVis.js to be able to connect to the server to
+// get network graph information and send move requests.
+// Taken from https://www.fssnip.net/mL/title/CORS-response-with-Suave via
+// https://stackoverflow.com/questions/44359375/allow-multiple-headers-with-cors-in-suave
+let setCORSHeaders =
+    addHeader "Access-Control-Allow-Origin" "*"
+    >=> addHeader "Access-Control-Allow-Headers" "content-type"
 
 // Handles a move request. Attempts to complete the request, failing with a 404
 // response if the operation did not return a valid vertex.
@@ -394,22 +381,16 @@ let locationRoute (zipper : Zipper<Vert, TaggedValueEdge<Vert, string, float>> r
 let connectedRoute (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) _request =
     printfn "Received getDestinations operation."
     let edges = graph.OutEdges((zipper.Value).Cursor)
-    let edgesMap = Seq.map (fun (item : AppEdge) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) edges
-    OK (Json.serialize { Edges = Seq.toList edgesMap })
+    let edgesMap = Seq.map (fun (item : AppEdge) -> item.ToRecord()) edges
+    OK (Json.serialize {| Edges = Seq.toList edgesMap |})
 
 // Returns the current vertex and all edges connected to it.
-let getGraphRoute (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) _request =
-    printfn "Received getGraph operation."
+let getCursorSurroundsRoute (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) _request =
+    printfn "Received getCursorSurrounds operation."
     let currentVertex = (zipper.Value).Cursor
     let edges = Seq.filter (fun (item : AppEdge) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) graph.Edges
-    let edgesMap = Seq.map (fun (item : AppEdge) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) edges
-    OK (Json.serialize { Vertex = (zipper.Value).Cursor; Edges = Seq.toList edgesMap; History = (zipper.Value).VertHistory; HistoryIndex = (zipper.Value).HistoryIndex })
-
-// Adds CORS headers to allow cross origin requests.
-//https://stackoverflow.com/questions/44359375/allow-multiple-headers-with-cors-in-suave
-let setCORSHeaders =
-    addHeader "Access-Control-Allow-Origin" "*"
-    >=> addHeader "Access-Control-Allow-Headers" "content-type"
+    let edgesMap = Seq.map (fun (item : AppEdge) -> item.ToRecord()) edges
+    OK (Json.serialize {| Vertex = (zipper.Value).Cursor; Edges = Seq.toList edgesMap; History = (zipper.Value).VertHistory; HistoryIndex = (zipper.Value).HistoryIndex |})
 
 // Returns the graph's metadata.
 let getMetadataRoute metadata _request =
@@ -424,8 +405,14 @@ let getVerticesRoute (graph : AppGraph) _request =
 // Returns all the edges in the current graph.
 let getEdgesRoute (graph : AppGraph) _request =
     printfn "Received getEdges operation."
-    let edgesMap = Seq.map (fun (item : AppEdge) -> { Start = item.Source; End = item.Target; Tag = item.Tag; Value = item.Value }) graph.Edges
+    let edgesMap = Seq.map (fun (item : AppEdge) -> item.ToRecord()) graph.Edges
     OK (Json.serialize (Seq.toList edgesMap))
+
+// Returns all the verticies and edges in the current graph.
+let getGraphRoute (graph : AppGraph) _request =
+    printfn "Received getGraph operation."
+    let edgesMap = Seq.map (fun (item : AppEdge) -> item.ToRecord()) graph.Edges
+    OK (Json.serialize {| Vertices = (Seq.toList graph.Vertices); Edges = (Seq.toList edgesMap)|})
 
 // Handles the routes for the example.
 let app graph zipper =
@@ -459,7 +446,7 @@ let app graph zipper =
                 // Request to return the current zipper cursor and all vertices
                 // connected to it. Includes vertices that have an incoming
                 // edge to the current cursor.
-                path "/getGraph" >=> request (getGraphRoute graph zipper)
+                path "/getCursorSurrounds" >=> request (getCursorSurroundsRoute graph zipper)
 
                 // Request to get the metadata for the graph.
                 path "/getMetadata" >=> request (getMetadataRoute metadata)
@@ -469,6 +456,9 @@ let app graph zipper =
 
                 // Request to get a list of all edges in the current graph.
                 path "/getEdges" >=> request (getEdgesRoute graph)
+
+                // Request to get all vertices and all edges in the current graph.
+                path "/getGraph" >=> request (getGraphRoute graph)
             ] ) ]
 
 // Example curl commands (Linux):
