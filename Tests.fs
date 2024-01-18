@@ -9,8 +9,8 @@ open FParsec
 open QuikGraph
 
 open GraphDSL.TranscriptionFactor
-open GraphDSL.NetworkGraph
 open GraphDSL.Zipper
+open GraphDSL.Types
 
 
 type GraphDSLTests(output:ITestOutputHelper) =
@@ -201,3 +201,47 @@ type GraphDSLTests(output:ITestOutputHelper) =
         | Some (zz) ->
             Assert.True(zz.Cursor = 1, "Test 11 failure - Zipper forceMoveToVertex action moved to an unexpected vertex.")
             output.WriteLine("Test 11 success - Zipper moved from vertex 3 to vertex 1 via a forceMoveToVertex action.")
+
+    [<Fact>]
+    member __.``Graph Types - Create Graph With Individual Vertices\Edges`` () =
+        let vzero = newVert "zero" 0
+        let vone = newVert "one" 1
+        let vtwo = newVert "two" 2
+        let vthree = newVert "three" 3
+        let vfortytwo = newVert "forty-two" 42
+
+        let graph = new AppGraph ()
+                    |> tryAddVertex vzero
+                    |> tryAddVertex vone
+                    |> tryAddVertex vtwo
+                    |> tryAddVertex vthree
+                    |> tryAddVertex vfortytwo
+                    |> tryAddEdge (newEdge vzero vone "add_one" 1)
+                    |> tryAddEdge (newEdge vzero vtwo "add_two" 1)
+                    |> tryAddEdge (newEdge vtwo vthree "two_three" 1)
+                    |> tryAddEdge (newEdge vone vthree "one_three" 1)
+                    |> tryAddEdge (newEdge vthree vfortytwo "end" 1)
+
+        Assert.True(Seq.length graph.Vertices = 5 && Seq.length graph.Edges = 5, "Test 12 failure - Graph does not have five vertices and five edges.")
+        output.WriteLine("Test 12 success - Graph has five vertices and five edges.")
+
+    [<Fact>]
+    member __.``Graph Types - Create Graph With Lists`` () =
+        let vzero = newVert "zero" 0
+        let vone = newVert "one" 1
+        let vtwo = newVert "two" 2
+        let vthree = newVert "three" 3
+        let vfortytwo = newVert "forty-two" 42
+
+        let graph = new AppGraph ()
+                    |> tryAddVertices [vzero; vone; vtwo; vthree; vfortytwo]
+                    |> tryAddEdges [
+                        (newEdge vzero vone "add_one" 1);
+                        (newEdge vzero vtwo "add_two" 1);
+                        (newEdge vtwo vthree "two_three" 1);
+                        (newEdge vone vthree "one_three" 1);
+                        (newEdge vthree vfortytwo "end" 1)
+                    ]
+
+        Assert.True(Seq.length graph.Vertices = 5 && Seq.length graph.Edges = 5, "Test 13 failure - Graph does not have five vertices and five edges.")
+        output.WriteLine("Test 13 success - Graph has five vertices and five edges.")

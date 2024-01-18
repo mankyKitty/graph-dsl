@@ -103,7 +103,7 @@ let tryAddEdge (edge: AppEdge) (graph: AppGraph) =
 #endif
             newGraph
 
-// Attempts to add a avertex to the graph.
+// Attempts to add a vertex to the graph.
 let tryAddVertex (vert: Vert) (graph: AppGraph) =
     // Check if the vertex already exists first, and if it does, return
     // immediately with the existing graph.
@@ -127,6 +127,62 @@ let tryAddVertex (vert: Vert) (graph: AppGraph) =
 #endif
             newGraph
 
+// Attempts to add multiple edges to the graph.
+// Duplicate edges will be ignored, but an error with adding any edge will stop
+// the whole operation and return the original graph.
+let tryAddEdges (edges: AppEdge list) (graph : AppGraph) =
+    // First, make sure at least one edge is not already in the graph.
+    match List.tryFind (fun edge -> not (graph.ContainsEdge(edge))) edges with
+        | None ->
+#if LOGGING && VERBOSE
+                printfn "All %i edge(s) are already in the graph" (List.length edges)
+#endif
+                graph
+        // If there are at least some edges that can be added, attempt to do
+        // so.
+        | Some _ ->
+                let newGraph = graph.Clone()
+
+                // If AddEdge returns false and the edge doesn't exist, there
+                // was an error, so revert back to the original graph.
+                match List.tryFind (fun edge -> not (newGraph.AddEdge(edge)) && not (newGraph.ContainsEdge(edge))) edges with
+                | None ->
+#if LOGGING && VERBOSE
+                    printfn "Successfully added %i edges" (List.length edges)
+#endif
+                    newGraph
+                | Some edge ->
+                    printfn "Failed to add edge %s (%i) to %s (%i). Reverting any changes made" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
+                    graph
+
+// Attempts to add multiple vertices to the graph.
+// Duplicate vertices will be ignored, but an error with adding any vertex will
+// stop the whole operation and return the original graph.
+let tryAddVertices (verts: Vert list) (graph : AppGraph) =
+    // First, make sure at least one edge is not already in the graph.
+    match List.tryFind (fun vert -> not (graph.ContainsVertex(vert))) verts with
+        | None ->
+#if LOGGING && VERBOSE
+                printfn "All %i vertices are already in the graph" (List.length verts)
+#endif
+                graph
+        // If there are at least some vertices that can be added, attempt to
+        // do so.
+        | Some _ ->
+                let newGraph = graph.Clone()
+
+                // If AddVertex returns false and the vertex doesn't exist,
+                // there was an error, so revert back to the original graph.
+                match List.tryFind (fun vert -> not (newGraph.AddVertex(vert)) && not (newGraph.ContainsVertex(vert))) verts with
+                | None ->
+#if LOGGING && VERBOSE
+                    printfn "Successfully added %i vertices" (List.length verts)
+#endif
+                    newGraph
+                | Some vert ->
+                    printfn "Failed to add vertex %s (%i). Reverting any changes made" vert.Tag vert.Value
+                    graph
+
 // Creates a clone of a graph.
 // QuikGraph's clone doesn't create new instances of the vertices and edges
 // (shown by changing edge values - they will change on both the original and
@@ -139,20 +195,17 @@ let deepCloneAppGraph (graph : AppGraph) =
 #endif
     let stopWatch = System.Diagnostics.Stopwatch.StartNew()
 #endif
-    // Go through all the edges first and create copies of them anad their
-    // vertices.
-    let newGraph = Seq.fold (fun graph (edge : AppEdge) ->
-        let copySource = newVert edge.Source.Tag edge.Source.Value
-        let copyTarget = newVert edge.Target.Tag edge.Target.Value
-        let copyEdge = newEdge copySource copyTarget edge.Tag edge.Value
-        tryAddVertex copySource graph
-            |> tryAddVertex copyTarget
-            |> tryAddEdge copyEdge) (new AppGraph()) graph.Edges
-    // Then add any vertices that remain (i.e. any vertices that aren't
-    // connected to anything else).
-                |> Seq.fold (fun graph (vert : Vert) ->
-                    let copyVert = newVert vert.Tag vert.Value
-                    tryAddVertex copyVert graph) <| (Seq.filter (fun vert -> Seq.length (graph.OutEdges(vert)) < 1) graph.Vertices)
+
+    // Since we're making a brand new graph that no other function should see
+    // until it's done, we don't need to worry about side effects during the
+    // process.
+    let newGraph = new AppGraph()
+    let newVerts = Seq.map (fun vert -> newVert vert.Tag vert.Value) graph.Vertices
+    let newEdges = Seq.map (fun (edge : AppEdge) -> newEdge (newVert edge.Source.Tag edge.Source.Value) (newVert edge.Target.Tag edge.Target.Value) edge.Tag edge.Value) graph.Edges
+    Seq.iter (fun vert -> newGraph.AddVertex(vert) |> ignore) newVerts
+    Seq.iter (fun edge -> newGraph.AddEdge(edge) |> ignore) newEdges
+    if (Seq.length newGraph.Vertices <> Seq.length graph.Vertices || Seq.length newGraph.Edges <> Seq.length graph.Edges) then
+        failwith "Failed to deep clone graph - the number of edges or vertices is different."
 #if LOGGING
     stopWatch.Stop()
     let ms = stopWatch.Elapsed.TotalMilliseconds

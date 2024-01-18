@@ -122,7 +122,7 @@ let moveToHistoryIndex i (z: Zipper<'V, 'E>) : Zipper<'V, 'E> =
 // moveToHistoryIndex function instead of a complex match in the movement
 // history.
 let moveBack (z: Zipper<'V, 'E>) : Zipper<'V, 'E> =
-    moveToHistoryIndex (z.HistoryIndex - 1) z 
+    moveToHistoryIndex (z.HistoryIndex - 1) z
 
 // A helper function to perform a given movement on the graph and record that
 // in the history.
