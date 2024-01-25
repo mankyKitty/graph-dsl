@@ -333,44 +333,51 @@ let setCORSHeaders =
 // Handles a move request. Attempts to complete the request, failing with a 404
 // response if the operation did not return a valid vertex.
 let moveRoute metadata graph (zipper : Zipper<Vert, AppEdge> ref) request =
-    let moveOp =
-      request.rawForm
-      |> UTF8.toString
-      |> Json.deserialize<MoveOp>
+    try
+        let moveOp =
+          request.rawForm
+          |> UTF8.toString
+          |> Json.deserialize<MoveOp>
 
-    printfn "Received move operation: %s" (string moveOp)
+        printfn "Received move operation: %s" (string moveOp)
 
-    // Determine the move operation to use.
-    let moveRes = match moveOp with
-                    // Standard operations:
-                    | ToVertex vval -> moveToVertex (graph, zipper.Value, vval)
-                    | AlongEdge edge -> moveAlongEdge (graph, zipper.Value, (newEdge (newVert "dummy" -1) (newVert "dummy" -2) edge -1))
-                    | FirstEdge s -> moveAlongFirstMatchingEdge(graph, zipper.Value, (fun ve -> ve.Tag = s))
-                    | FirstVertex co -> moveAlongFirstMatchingVertex(graph, zipper.Value, mkCompOp co)
-                    // History operations:
-                    | Back -> Some(moveBack zipper.Value)
-                    | Forward -> Some(moveForward zipper.Value)
-                    | GoToHistory i -> Some(moveToHistoryIndex i zipper.Value)
-                    // Special operations
-                    | ForceToVertex vval -> forceMoveToVertex (graph, zipper.Value, vval)
-                    | MetadataSearch query -> findFirstWithMetadata metadata graph zipper query
-                    | MetadataSearchMulti queryList -> findFirstWithMetadataMulti metadata graph zipper queryList
-                    | NextMostConnected unvisited -> findNextMostConnected unvisited graph zipper
-                    | NextHighestQueryScore query -> findNextHighestQueryScore graph zipper ((findFirstWithMetadata_filter metadata) query)
-                    | NextHighestScore unvisited -> findNextHighestScore unvisited graph zipper
+        // Determine the move operation to use.
+        let moveRes = match moveOp with
+                        // Standard operations:
+                        | ToVertex vval -> moveToVertex (graph, zipper.Value, vval)
+                        | AlongEdge edge -> moveAlongEdge (graph, zipper.Value, (newEdge (newVert "dummy" -1) (newVert "dummy" -2) edge -1))
+                        | FirstEdge s -> moveAlongFirstMatchingEdge(graph, zipper.Value, (fun ve -> ve.Tag = s))
+                        | FirstVertex co -> moveAlongFirstMatchingVertex(graph, zipper.Value, mkCompOp co)
+                        // History operations:
+                        | Back -> Some(moveBack zipper.Value)
+                        | Forward -> Some(moveForward zipper.Value)
+                        | GoToHistory i -> Some(moveToHistoryIndex i zipper.Value)
+                        // Special operations
+                        | ForceToVertex vval -> forceMoveToVertex (graph, zipper.Value, vval)
+                        | MetadataSearch query -> findFirstWithMetadata metadata graph zipper query
+                        | MetadataSearchMulti queryList -> findFirstWithMetadataMulti metadata graph zipper queryList
+                        | NextMostConnected unvisited -> findNextMostConnected unvisited graph zipper
+                        | NextHighestQueryScore query -> findNextHighestQueryScore graph zipper ((findFirstWithMetadata_filter metadata) query)
+                        | NextHighestScore unvisited -> findNextHighestScore unvisited graph zipper
 
-    // Attempt to complete the move operation.
-    match moveRes with
-        | None ->
-            printfn "Remained at vertex %s (%i) as move action did not return a valid vertex." zipper.Value.Cursor.Tag zipper.Value.Cursor.Value
-            NOT_FOUND "No valid vertex to move to."
-        | Some newZipper ->
-            if (newZipper.Cursor.Equals(zipper.Value.Cursor)) then
-                printfn "Remained at vertex %s (%i) as move action returned the same vertex." newZipper.Cursor.Tag newZipper.Cursor.Value
-            else
-                printfn "Moved to vertex %s (%i)." newZipper.Cursor.Tag newZipper.Cursor.Value
-            zipper.Value <- newZipper
-            OK (Json.serialize (zipper.Value).Cursor)
+        // Attempt to complete the move operation.
+        match moveRes with
+            | None ->
+                printfn "Remained at vertex %s (%i) as move action did not return a valid vertex." zipper.Value.Cursor.Tag zipper.Value.Cursor.Value
+                NOT_FOUND "No valid vertex to move to."
+            | Some newZipper ->
+                if (newZipper.Cursor.Equals(zipper.Value.Cursor)) then
+                    printfn "Remained at vertex %s (%i) as move action returned the same vertex." newZipper.Cursor.Tag newZipper.Cursor.Value
+                else
+                    printfn "Moved to vertex %s (%i)." newZipper.Cursor.Tag newZipper.Cursor.Value
+                zipper.Value <- newZipper
+                OK (Json.serialize (zipper.Value).Cursor)
+
+    // Catch possible errors from trying to parse JSON or move.
+    with
+    | :? JsonDeserializationError as ex ->
+        printfn "Incorrect JSON was sent - Remained at vertex %s (%i)" zipper.Value.Cursor.Tag zipper.Value.Cursor.Value
+        BAD_REQUEST "Invalid request data."
 
 // Handles a getLocation request by returning the current zipper cursor.
 let locationRoute (zipper : Zipper<Vert, TaggedValueEdge<Vert, string, float>> ref) _request =
@@ -390,7 +397,7 @@ let getCursorSurroundsRoute (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> r
     let currentVertex = (zipper.Value).Cursor
     let edges = Seq.filter (fun (item : AppEdge) -> item.Source.Equals(currentVertex) || item.Target.Equals(currentVertex)) graph.Edges
     let edgesMap = Seq.map (fun (item : AppEdge) -> item.ToRecord()) edges
-    OK (Json.serialize {| Vertex = (zipper.Value).Cursor; Edges = Seq.toList edgesMap; History = (zipper.Value).VertHistory; HistoryIndex = (zipper.Value).HistoryIndex |})
+    OK (Json.serialize {| Vertex = (zipper.Value).Cursor; Edges = Seq.toList edgesMap |})
 
 // Returns the graph's metadata.
 let getMetadataRoute metadata _request =
@@ -413,6 +420,44 @@ let getGraphRoute (graph : AppGraph) _request =
     printfn "Received getGraph operation."
     let edgesMap = Seq.map (fun (item : AppEdge) -> item.ToRecord()) graph.Edges
     OK (Json.serialize {| Vertices = (Seq.toList graph.Vertices); Edges = (Seq.toList edgesMap)|})
+
+// Returns the zipper history.
+let getHistory (zipper : Zipper<Vert, AppEdge> ref) _request =
+    printfn "Received getHistory operation."
+
+    // Create a representation of the move history since functions cannot be
+    // converted to JSON.
+    let moveHistory = List.map ( fun (move : Move<Vert, AppEdge>) ->
+                                    match move with
+                                        | Move.ToVertex (source, target) ->
+                                            Map.empty
+                                                .Add("Source", string source)
+                                                .Add("Target", string target)
+                                                .Add("MoveType", "ToVertex")
+                                        | Move.AlongEdge (source, edge) ->
+                                            Map.empty
+                                                .Add("Source", string source)
+                                                .Add("Edge", string edge)
+                                                .Add("MoveType", "AlongEdge")
+                                        | Move.FirstEdgeMatching (source, func, edge) ->
+                                            Map.empty
+                                                .Add("Source", string source)
+                                                .Add("Edge", string edge)
+                                                .Add("Function", string func)
+                                                .Add("MoveType", "FirstEdgeMatching")
+                                        | Move.FirstVertexMatching (source, func, target) ->
+                                            Map.empty
+                                                .Add("Source", string source)
+                                                .Add("Target", string target)
+                                                .Add("Function", string func)
+                                                .Add("MoveType", "FirstVertexMatching")
+                                        | Move.ForceToVertex (source, target) ->
+                                            Map.empty
+                                                .Add("Source", string source)
+                                                .Add("Target", string target)
+                                                .Add("MoveType", "ForceToVertex")
+                                    ) (zipper.Value).History
+    OK (Json.serialize {| MoveHistory = moveHistory; VertexHistory = (zipper.Value).VertHistory; HistoryIndex = (zipper.Value).HistoryIndex |})
 
 // Handles the routes for the example.
 let app graph zipper =
@@ -459,6 +504,9 @@ let app graph zipper =
 
                 // Request to get all vertices and all edges in the current graph.
                 path "/getGraph" >=> request (getGraphRoute graph)
+
+                // Request to get the history of movement from the zipper.
+                path "/getHistory" >=> request (getHistory zipper)
             ] ) ]
 
 // Example curl commands (Linux):

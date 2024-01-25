@@ -17,51 +17,51 @@ You can also open the NetworkVis.html file in a browser for a visual example of 
 For a full list of possible commands, see the "Server commands" section in the [wiki](https://github.com/mankyKitty/graph-dsl/wiki).
 
 ### Viewing the current cursor
-#### Linux example:
+#### Linux:
 ```
-$curl -X GET -vvv http://localhost:8080/getLocation
+$ curl -X GET -vvv http://localhost:8080/getLocation
 ```
-#### Windows example:
+#### Windows:
 ```
 curl -X GET -vvv http://localhost:8080/getLocation
 ```
 
 ### Viewing the destinations from the current cursor
-#### Linux example:
+#### Linux:
 ```
-$curl -X GET -vvv http://localhost:8080/getDestinations
+$ curl -X GET -vvv http://localhost:8080/getDestinations
 ```
-#### Windows example:
+#### Windows:
 ```
 curl -X GET -vvv http://localhost:8080/getDestinations
 ```
 
 ### Moving to a new vertex
-#### Linux example:
+#### Linux (example):
 ```
 $ curl -X POST -vvv --data '{"moveOp":"ToVertex","moveInputs":{"Tag":"one","Value":1}}' http://localhost:8080/move
 ```
-#### Windows example:
+#### Windows (example):
 ```
 curl -X POST -vvv --data {\"moveOp\":\"ToVertex\",\"moveInputs\":{\"Tag\":\"one\",\"Value\":1}} http://localhost:8080/move
 ```
 
 ### Moving backwards in history
-#### Linux example:
+#### Linux:
 ```
 $ curl -X POST -vvv --data '{"moveOp":"Back","moveInputs":[]}' http://localhost:8080/move
 ```
-#### Windows example:
+#### Windows:
 ```
 curl -X POST -vvv --data {\"moveOp\":\"Back\",\"moveInputs\":[]} http://localhost:8080/move
 ```
 
 ### Moving forwards in history
-#### Linux example:
+#### Linux:
 ```
 $ curl -X POST -vvv --data '{"moveOp":"Forward","moveInputs":[]}' http://localhost:8080/move
 ```
-#### Windows example:
+#### Windows:
 ```
 curl -X POST -vvv --data {\"moveOp\":\"Forward\",\"moveInputs\":[]} http://localhost:8080/move
 ```

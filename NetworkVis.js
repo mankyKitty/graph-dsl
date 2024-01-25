@@ -67,6 +67,7 @@ window.onload = function() {
             alert('Could not perform a move action:\nHTTP status code was ' + err);
         } else {
             getJSON('http://localhost:8080/getCursorSurrounds', graphRequestHandler);
+            getJSON('http://localhost:8080/getHistory', historyRequestHandler);
         }
     };
 
@@ -459,8 +460,17 @@ window.onload = function() {
             }
         });
 
+        // Recolour the overview nodes if that visualisation exists.
+        if (overviewNetwork !== null) {
+            recolourOverviewNodes();
+        }
+    }
+
+    // Generates the string to populate the history element.
+    let listHistory = function(sourceData) {
+
         // Display the zipper history if there is any.
-        if (sourceData.History.length > 1) {
+        if (sourceData.VertexHistory.length > 1) {
             // Clear the existing history items.
             while (historyText.firstChild) {
                 historyText.removeChild(historyText.lastChild);
@@ -472,10 +482,10 @@ window.onload = function() {
             // Currently, the objects in the zipper's history are "MoveOp"
             // type in the F# code, so determining what they are takes some
             // steps.
-            for (vertex of sourceData.History) {
+            for (vertex of sourceData.VertexHistory) {
 
                 // Show a different entry for the first in the history.
-                if (vertex === sourceData.History[sourceData.History.length - 1]) {
+                if (vertex === sourceData.VertexHistory[sourceData.VertexHistory.length - 1]) {
                     entries.unshift(`Started at ${vertex.Tag} (${vertex.Value}).`);
                 } else {
                     entries.unshift(`Moved to ${vertex.Tag} (${vertex.Value}).`);
@@ -504,10 +514,10 @@ window.onload = function() {
             }
 
             // Add the current history location if it's not at the end.
-            if (sourceData.HistoryIndex === 0 && sourceData.History.length > 1) {
+            if (sourceData.HistoryIndex === 0 && sourceData.VertexHistory.length > 1) {
                 historyStatus.innerHTML = 'Currently at starting position.';
             }
-            else if (sourceData.HistoryIndex < sourceData.History.length - 1) {
+            else if (sourceData.HistoryIndex < sourceData.VertexHistory.length - 1) {
                 historyStatus.innerHTML = `Currently at position after step ${sourceData.HistoryIndex + 1}.`;
             } else {
                 historyStatus.innerHTML = '';
@@ -516,11 +526,6 @@ window.onload = function() {
         // Display a message if there's no history yet.
         } else {
             historyText.innerHTML = 'No navigation history.';
-        }
-
-        // Recolour the overview nodes if that visualisation exists.
-        if (overviewNetwork !== null) {
-            recolourOverviewNodes();
         }
     }
 
@@ -537,8 +542,22 @@ window.onload = function() {
         }
     };
 
+    // Function for handing the result of a history request.
+    let historyRequestHandler = function(err, data) {
+        if (err === 404) {
+            console.error('Could not retrieve current navigation history:\nThe server did not return any data.');
+        } else if (err === 400) {
+            console.error('Could not retrieve current navigation history:\nThe server encountered an error while trying to send data.');
+        } else if (err !== null) {
+            console.error('Could not retrieve current navigation history:\nHTTP status code was ' + err);
+        } else {
+            listHistory(data);
+        }
+    };
+
     // Get the initial network data from the server.
     getJSON('http://localhost:8080/getCursorSurrounds', graphRequestHandler);
+    getJSON('http://localhost:8080/getHistory', historyRequestHandler);
 
     // Clicking on the back button.
     backButton.addEventListener('click', function() {
