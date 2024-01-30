@@ -58,16 +58,23 @@ type ExampleInfo = {
     Synonyms : string list;
 }
 
+// Used for sent AlongEdge commands.
+type MoveOpEdge = {
+    Source : Vert;
+    Target : Vert;
+    Tag: string;
+}
+
 // Our boundary types are different to the internal zipper types so there isn't conceptual leakage between the two.
 [<JsonUnion(Mode = UnionMode.CaseKeyAsFieldValue, CaseKeyField="moveOp", CaseValueField="moveInputs")>]
 type MoveOp =
     // Standard operations:
-    | ToVertex of Vert      // Move to the vertex that matches the given tag and value.
-    | AlongEdge of string   // Move to the vertex that is the destination of the given edge.
-    | FirstEdge of string   // Move along the first edge matching the given selection options.
-    | FirstVertex of CompOp // Move to the first vertex connected to the current vertex matching the given comparison.
+    | ToVertex of Vert                  // Move to the vertex that matches the given tag and value.
+    | AlongEdge of MoveOpEdge           // Move to the vertex that is the destination of the given edge.
+    | FirstEdge of string               // Move along the first edge matching the given selection options.
+    | FirstVertex of CompOp             // Move to the first vertex connected to the current vertex matching the given comparison.
     // History operations:
-    | Back                  // Move to the vertex that was before the last move in the zipper's history. Does not erase the history.
+    | Back                              // Move to the vertex that was before the last move in the zipper's history. Does not erase the history.
     | Forward                           // Move to the vertex that was after the next move in the zipper's history. Does not erase the history.
     | GoToHistory of int                // Move to the vertex after the specified step in the zipper's history (or the starting vertex if given 0). Does not erase the history.
     // Special operations:
@@ -345,7 +352,7 @@ let moveRoute metadata graph (zipper : Zipper<Vert, AppEdge> ref) request =
         let moveRes = match moveOp with
                         // Standard operations:
                         | ToVertex vval -> moveToVertex (graph, zipper.Value, vval)
-                        | AlongEdge edge -> moveAlongEdge (graph, zipper.Value, (newEdge (newVert "dummy" -1) (newVert "dummy" -2) edge -1))
+                        | AlongEdge edge -> moveAlongEdge (graph, zipper.Value, (newEdge edge.Source edge.Target edge.Tag -1))
                         | FirstEdge s -> moveAlongFirstMatchingEdge(graph, zipper.Value, (fun ve -> ve.Tag = s))
                         | FirstVertex co -> moveAlongFirstMatchingVertex(graph, zipper.Value, mkCompOp co)
                         // History operations:
@@ -431,30 +438,44 @@ let getHistory (zipper : Zipper<Vert, AppEdge> ref) _request =
                                     match move with
                                         | Move.ToVertex (source, target) ->
                                             Map.empty
-                                                .Add("Source", string source)
-                                                .Add("Target", string target)
+                                                .Add("SourceTag", string source.Tag)
+                                                .Add("SourceValue", string source.Value)
+                                                .Add("TargetTag", string target.Tag)
+                                                .Add("TargetValue", string target.Value)
                                                 .Add("MoveType", "ToVertex")
                                         | Move.AlongEdge (source, edge) ->
                                             Map.empty
-                                                .Add("Source", string source)
-                                                .Add("Edge", string edge)
+                                                .Add("SourceTag", string source.Tag)
+                                                .Add("SourceValue", string source.Value)
+                                                .Add("TargetTag", string edge.Target.Tag)
+                                                .Add("TargetValue", string edge.Target.Value)
+                                                .Add("EdgeTag", string edge.Tag)
+                                                .Add("EdgeValue", string edge.Value)
                                                 .Add("MoveType", "AlongEdge")
                                         | Move.FirstEdgeMatching (source, func, edge) ->
                                             Map.empty
-                                                .Add("Source", string source)
-                                                .Add("Edge", string edge)
+                                                .Add("SourceTag", string source.Tag)
+                                                .Add("SourceValue", string source.Value)
+                                                .Add("TargetTag", string edge.Target.Tag)
+                                                .Add("TargetValue", string edge.Target.Value)
+                                                .Add("EdgeTag", string edge.Tag)
+                                                .Add("EdgeValue", string edge.Value)
                                                 .Add("Function", string func)
                                                 .Add("MoveType", "FirstEdgeMatching")
                                         | Move.FirstVertexMatching (source, func, target) ->
                                             Map.empty
-                                                .Add("Source", string source)
-                                                .Add("Target", string target)
+                                                .Add("SourceTag", string source.Tag)
+                                                .Add("SourceValue", string source.Value)
+                                                .Add("TargetTag", string target.Tag)
+                                                .Add("TargetValue", string target.Value)
                                                 .Add("Function", string func)
                                                 .Add("MoveType", "FirstVertexMatching")
                                         | Move.ForceToVertex (source, target) ->
                                             Map.empty
-                                                .Add("Source", string source)
-                                                .Add("Target", string target)
+                                                .Add("SourceTag", string source.Tag)
+                                                .Add("SourceValue", string source.Value)
+                                                .Add("TargetTag", string target.Tag)
+                                                .Add("TargetValue", string target.Value)
                                                 .Add("MoveType", "ForceToVertex")
                                     ) (zipper.Value).History
     OK (Json.serialize {| MoveHistory = moveHistory; VertexHistory = (zipper.Value).VertHistory; HistoryIndex = (zipper.Value).HistoryIndex |})
@@ -509,9 +530,11 @@ let app graph zipper =
                 path "/getHistory" >=> request (getHistory zipper)
             ] ) ]
 
-// Example curl commands (Linux):
+// Example curl commands for move route (Linux):
 // ToVertex:
 // $ curl -X POST -vvv --data '{"moveOp":"ToVertex","moveInputs":{"Tag":"one","Value":1}}' http://localhost:8080/move
+// ForceToVertex:
+// $ curl -X POST -vvv --data '{"moveOp":"ForceToVertex","moveInputs":{"Tag":"one","Value":1}}' http://localhost:8080/move
 // Back:
 // $ curl -X POST -vvv --data '{"moveOp":"Back","moveInputs":[]}' http://localhost:8080/move
 // MetadataSearch:
@@ -531,9 +554,11 @@ let app graph zipper =
 // NextHighestScore:
 // $ curl -X POST -vvv --data '{"moveOp":"NextHighestScore","moveInputs":true}' http://localhost:8080/move
 
-// Example curl commands (Windows):
+// Example curl commands for move route (Windows):
 // ToVertex:
 // curl -X POST -vvv --data {\"moveOp\":\"ToVertex\",\"moveInputs\":{\"Tag\":\"one\",\"Value\":1}} http://localhost:8080/move
+// ForceToVertex:
+// curl -X POST -vvv --data {\"moveOp\":\"ForceToVertex\",\"moveInputs\":{\"Tag\":\"one\",\"Value\":1}} http://localhost:8080/move
 // Back:
 // curl -X POST -vvv --data {\"moveOp\":\"Back\",\"moveInputs\":[]} http://localhost:8080/move
 // MetadataSearch:

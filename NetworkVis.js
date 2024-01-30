@@ -466,51 +466,71 @@ window.onload = function() {
         }
     }
 
+    // Adds a list item to the history element.
+    // Clicking on an item tells the zipper to jump to that point in the
+    // history.
+    let addHistoryItem = function(item, index) {
+        let listItem = document.createElement('li');
+        let itemLink = document.createElement('a');
+        itemLink.setAttribute('href', '#');
+        itemLink.addEventListener('click', function (properties) {
+            postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'GoToHistory','moveInputs':index});
+        });
+        itemLink.innerHTML = item;
+        listItem.appendChild(itemLink);
+        historyText.appendChild(listItem);
+    }
+
     // Generates the string to populate the history element.
     let listHistory = function(sourceData) {
 
         // Display the zipper history if there is any.
-        if (sourceData.VertexHistory.length > 1) {
+        if (sourceData.MoveHistory.length > 0) {
             // Clear the existing history items.
             while (historyText.firstChild) {
                 historyText.removeChild(historyText.lastChild);
             }
 
-            // Array for history entries.
-            let entries = [];
+            // Add an entry for the starting vertex.
+            // Since the history starts at the latest vertex, the last vertex
+            // in the list is required.
+            const startingVertex = sourceData.VertexHistory[sourceData.VertexHistory.length - 1];
+            addHistoryItem(`Started at ${startingVertex.Tag} (${startingVertex.Value}).`);
 
-            // Currently, the objects in the zipper's history are "MoveOp"
-            // type in the F# code, so determining what they are takes some
-            // steps.
-            for (vertex of sourceData.VertexHistory) {
+            // Go through all of the moves in the history. Like before, this is
+            // in reverse.
+            let historyCount = 1;
+            for (let i = sourceData.MoveHistory.length - 1; i >= 0; i--) {
+                const historyEntry = sourceData.MoveHistory[i];
 
-                // Show a different entry for the first in the history.
-                if (vertex === sourceData.VertexHistory[sourceData.VertexHistory.length - 1]) {
-                    entries.unshift(`Started at ${vertex.Tag} (${vertex.Value}).`);
-                } else {
-                    entries.unshift(`Moved to ${vertex.Tag} (${vertex.Value}).`);
+                // Determine what the list entry will show depending on the
+                // type of move.
+                switch(historyEntry.MoveType) {
+                    case "ToVertex":
+                        addHistoryItem(`Moved to ${historyEntry.TargetTag} (${historyEntry.TargetValue}).`, historyCount);
+                        break;
+                    case "AlongEdge":
+                        addHistoryItem(`Moved along the ${historyEntry.EdgeTag} edge ${historyEntry.SourceTag} (${historyEntry.SourceValue}) to ${historyEntry.TargetTag} (${historyEntry.TargetValue}).`, historyCount);
+                        break;
+                    case "FirstEdgeMatching":
+                        addHistoryItem(`Moved along the ${historyEntry.EdgeTag} edge ${historyEntry.SourceTag} (${historyEntry.SourceValue}) to ${historyEntry.TargetTag} (${historyEntry.TargetValue}) which matched the criteria.`, historyCount);
+                        break;
+                    case "FirstVertexMatching":
+                        addHistoryItem(`Moved to ${historyEntry.TargetTag} (${historyEntry.TargetValue}) which matched the criteria.`, historyCount);
+                        break;
+                    case "ForceToVertex":
+                        addHistoryItem(`Moved to ${historyEntry.TargetTag} (${historyEntry.TargetValue}) (regardless of connections).`, historyCount);
+                        break;
+                    // If the operation was unknown, get the vertex from the
+                    // vertex history and display that.
+                    default:
+                        const vertex = sourceData.VertexHistory[i-1];
+                        addHistoryItem(`Moved with an unknown operation to ${vertex.Tag} (${vertex.Value}).`, historyCount);
+                        break;
                 }
-            }
 
-            // Join all the entries together as HTML list elements.
-            //historyText.innerHTML = '<li>' + entries.reverse().join('</li><li>') + '</li>';
-            //historyText.innerHTML = '<li>' + entries.join('</li><li>') + '</li>';
-
-            // Create a list item with a link for each entry. Clicking on an
-            // entry tells the zipper to jump to that point in the history.
-            let i = 0;
-            for (entry of entries) {
-                let listItem = document.createElement('li');
-                let itemLink = document.createElement('a');
-                itemLink.setAttribute('href', '#');
-                let currentI = i;
-                itemLink.addEventListener('click', function (properties) {
-                    postJSON('http://localhost:8080/move', moveRequestHandler, {'moveOp':'GoToHistory','moveInputs':currentI});
-                });
-                itemLink.innerHTML = entry;
-                listItem.appendChild(itemLink);
-                historyText.appendChild(listItem);
-                i++;
+                // Increment the conuter.
+                historyCount++;
             }
 
             // Add the current history location if it's not at the end.
