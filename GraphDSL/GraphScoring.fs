@@ -1,4 +1,9 @@
-﻿module GraphDSL.Scoring
+﻿// -----------------------------------------------------------------------------
+// Contains functions that add a score value to the edges in a QuikGraph (using
+// TaggedValueEdge for their edges) based on certain criteria.
+// -----------------------------------------------------------------------------
+
+module GraphDSL.Scoring
 
 #if LOGGING
 // If logging, use the stopwatches provided by this module for timing.
@@ -115,21 +120,25 @@ module WeightedDFS =
             | 0 -> (previousScore)
             | _ -> (
                 Seq.fold (fun (previousScore : float) (vert : Vert) ->
+
                 // If this vertex has already been visited, don't go any further
                 // down this path.
                 if (Seq.contains(vert) (visitedVerts.Value) && uniqueOnly) then
                     previousScore
+
                 // Otherwise add to the score based on the vertex's connectedness.
                 else
+
                     // Only count edges that don't loop back to the same vertex.
                     let outgoingEdges = Seq.filter (fun (edge : AppEdge) -> not (edge.Source.Equals(edge.Target))) (graph.OutEdges(vert))
+
                     // Each step after the first should have the score each
                     // connection contributes decreased.
-#if DEBUG
 #if NO_WEIGHTS
                     // If not using weights, add the total outgoing edges.
                     let scoreToAdd = float (Seq.length outgoingEdges)
-#else
+#elif DEBUG
+
                     // If in debug mode, the weighting should decrease by the same
                     // amount per step to allow for better comparisons as we
                     // explore scoring possibilities.
@@ -140,8 +149,8 @@ module WeightedDFS =
                                         (1.0/(float numSteps))  * (float stepsToGo) * float (Seq.length outgoingEdges)
                                         else
                                         ScoringValues.STEP_WEIGHT * (float stepsToGo) * float (Seq.length outgoingEdges)
-#endif
 #else
+
                     // Each step after the first should have the score each
                     // connection contributes decreased.
                     // This will be scaled by the total number of steps. So for
@@ -161,6 +170,7 @@ module WeightedDFS =
 
     // Iterator function for connection weighted scoring.
     let private edgeIterator_Connections (graph : AppGraph) vert numSteps uniqueOnly (edge : AppEdge) =
+
         // Only proceed with calculating the score if this edge isn't
         // a loop.
         if (edge.Source.Equals(edge.Target)) then
@@ -268,19 +278,22 @@ module WeightedDFS =
         | 0 -> (previousScore)
         | _ -> (
             Seq.fold (fun (previousScore : float) (vert : Vert) ->
+
             // If this vertex has already been visited, don't go any further
             // down this path.
             if (Seq.contains(vert) (visitedVerts.Value)) then
                 previousScore
+
             // If this vertex meets the condition, add the weighted score to
             // the accumulated score and add it as a visited vertex.
             // down this path.
             elif (condition vert) then
-#if DEBUG
 #if NO_WEIGHTS
+
                 // If not using weights, add one.
                 let scoreToAdd = 1.0
-#else
+#elif DEBUG
+
                 // If in debug mode, the weighting should decrease by the same
                 // amount per step to allow for better comparisons as we
                 // explore scoring possibilities.
@@ -291,8 +304,8 @@ module WeightedDFS =
                                     ((1.0/(float numSteps)) * (float stepsToGo))
                                     else
                                     ScoringValues.STEP_WEIGHT * (float stepsToGo)
-#endif
 #else
+
                 // Each step after the first should have the score each
                 // vertex fitting the conditions contributes decreased.
                 // This will be scaled by the total number of steps. So for
@@ -307,6 +320,7 @@ module WeightedDFS =
                 let currentScore = previousScore + scoreToAdd
                 visitedVerts.Value <- List.append (visitedVerts.Value) [vert]
                 scoring_Condition condition graph numSteps (stepsToGo - 1) (Seq.map (fun (edge : AppEdge) -> edge.Target) (graph.OutEdges(vert))) currentScore visitedVerts
+
             // Otherwise add it as a visited vertex but don't add to the score.
             else
                 visitedVerts.Value <- List.append (visitedVerts.Value) [vert]
@@ -316,6 +330,7 @@ module WeightedDFS =
 
     // Iterator function for condition weighted scoring.
     let private edgeIterator_Condition condition graph vert numSteps (edge : AppEdge) =
+
         // Only proceed with calculating the score if this edge isn't a loop.
         if (edge.Source.Equals(edge.Target)) then
             ()
@@ -410,6 +425,7 @@ module WeightedBFS =
 
     // Iterator function for connection weighted BFS scoring.
     let private edgeIterator_Connections graph vert numSteps (edge : AppEdge) =
+
         // Only proceed with calculating the score if this edge isn't a loop.
         if (edge.Source.Equals(edge.Target)) then
             ()
@@ -432,6 +448,7 @@ module WeightedBFS =
 #if LOGGING && VERBOSE
             printfn "Added %f to score from edges from %s" score edge.Target.Tag
 #endif
+
             // Do not traverse if the number of steps is one.
             if (numSteps > 1) then
 
@@ -458,11 +475,12 @@ module WeightedBFS =
                         // Only count edges that don't loop back to the same
                         // vertex.
                         let outgoingEdges = Seq.filter (fun (edge : AppEdge) -> not (edge.Source.Equals(edge.Target))) (graph.OutEdges(currentVert))
-#if DEBUG
 #if NO_WEIGHTS
+
                         // If not using weights, add the total outgoing edges.
                         let scoreToAdd = float (Seq.length outgoingEdges)
-#else
+#elif DEBUG
+
                         // If in debug mode, the weighting should decrease by the
                         // same amount per step to allow for better comparisons as
                         // we explore scoring possibilities.
@@ -473,8 +491,8 @@ module WeightedBFS =
                                             (1.0/(float numSteps)) * ((float numSteps) - value) * float (Seq.length outgoingEdges)
                                             else
                                             ScoringValues.STEP_WEIGHT * ((float numSteps) - value) * float (Seq.length outgoingEdges)
-#endif
 #else
+
                         // Each step after the first should have the score each
                         // connection contributes decreased.
                         // This will be scaled by the total number of steps. So for
@@ -522,6 +540,7 @@ module WeightedBFS =
         printfn "Changing edge values to weighted score based on number of connections and %i steps, using breadth first search..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
 
@@ -551,6 +570,7 @@ module WeightedBFS =
         printfn "Changing edge values to weighted score based on number of connections and %i steps, using breadth first search (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
 
@@ -622,11 +642,12 @@ module WeightedBFS =
                         // If this vertex meets the condition, add a weighted value
                         // to the score.
                         if (condition currentVert) then
-#if DEBUG
 #if NO_WEIGHTS
+
                             // If not using weights, add one.
                             let scoreToAdd = 1.0
-#else
+#elif DEBUG
+
                             // If in debug mode, the weighting should decrease by the same
                             // amount per step to allow for better comparisons as we
                             // explore scoring possibilities.
@@ -637,8 +658,8 @@ module WeightedBFS =
                                                 (1.0/(float numSteps)) * ((float numSteps) - value)
                                                 else
                                                 ScoringValues.STEP_WEIGHT * ((float numSteps) - value)
-#endif
 #else
+
                             // Each step after the first should have the score each
                             // vertex fitting the conditions contributes decreased.
                             // This will be scaled by the total number of steps. So for
@@ -686,6 +707,7 @@ module WeightedBFS =
         printfn "Changing edge values to weighted score based on condition and %i steps, using breadth first search..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
 

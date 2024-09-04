@@ -68,15 +68,18 @@ type MoveOpEdge = {
 // Our boundary types are different to the internal zipper types so there isn't conceptual leakage between the two.
 [<JsonUnion(Mode = UnionMode.CaseKeyAsFieldValue, CaseKeyField="moveOp", CaseValueField="moveInputs")>]
 type MoveOp =
+
     // Standard operations:
     | ToVertex of Vert                  // Move to the vertex that matches the given tag and value.
     | AlongEdge of MoveOpEdge           // Move to the vertex that is the destination of the given edge.
     | FirstEdge of string               // Move along the first edge matching the given selection options.
     | FirstVertex of CompOp             // Move to the first vertex connected to the current vertex matching the given comparison.
+
     // History operations:
     | Back                              // Move to the vertex that was before the last move in the zipper's history. Does not erase the history.
     | Forward                           // Move to the vertex that was after the next move in the zipper's history. Does not erase the history.
     | GoToHistory of int                // Move to the vertex after the specified step in the zipper's history (or the starting vertex if given 0). Does not erase the history.
+
     // Special operations:
     | ForceToVertex of Vert             // Move to the vertex that matches the given tag and value. Can move across backwards edges.
     | MetadataSearch of Query           // Move to the first vertex whose metadata matches the given search query.
@@ -199,12 +202,15 @@ let findMatchingMetadataRow (vertex: Vert) matchKey metadata =
 // Determines whether a given vertex matches a query based on metadata. Used
 // for the below function.
 let findFirstWithMetadata_filter (metadata : Map<string, string> list) (query : Query) (vertex : Vert) =
+
     // First, try to find a matching row in the metadata.
     // From Sean:
     match findMatchingMetadataRow vertex "Name" metadata with
+
     // If a metadata match was found, check the metadata for a query
     // match.
     | Some (row) -> SearchMetadata row query
+
     // Otherwise return false.
     | None -> false
 
@@ -212,8 +218,10 @@ let findFirstWithMetadata_filter (metadata : Map<string, string> list) (query : 
 // Only accepts a single query that specifies a property to search on and a
 // value that that property contains.
 let findFirstWithMetadata (metadata : Map<string, string> list) (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) (query : Query) =
+
     // Set up the function for filtering with the query.
     let filterQuery = findFirstWithMetadata_filter metadata query
+
     // Call the movement function for a matching vertex.
     moveAlongFirstMatchingVertex(graph, zipper.Value, filterQuery)
 
@@ -221,19 +229,25 @@ let findFirstWithMetadata (metadata : Map<string, string> list) (graph : AppGrap
 // Accepts a list of queries (consisting of the property and the value they
 // should contain) and the logical operator to use with those queries.
 let findFirstWithMetadataMulti (metadata : Map<string, string> list) (graph : AppGraph) (zipper : Zipper<Vert, AppEdge> ref) (queryList : MultiQuery) =
+
     // Create the function to test for true or false on a vertex.
     let filterQuery (vertex : Vert) =
+
         // First, try to find a matching row in the metadata.
         match findMatchingMetadataRow vertex "Name" metadata with
+
         // If a metadata match was found, check the metadata for a query match.
         | Some (row) ->
+
             // If the operation is AND, return true if all queries matched.
             // If the operation is OR, return true if at least one query
             let comp = if queryList.Operation.Equals(AND) then (&&) else (||)
             (queryList.Operation.Equals(AND), queryList.Queries)
               ||> List.fold (fun accum v -> comp accum (SearchMetadata row v))
+
         // Otherwise return false.
         | None -> false
+
     // Call the movement function for a matching vertex.
     moveAlongFirstMatchingVertex(graph, zipper.Value, filterQuery)
 
@@ -284,6 +298,9 @@ let generateFreshGraph (): AppGraph =
 // Synonyms are used in the example visuaisation for filters and can also be
 // used for move operations based on vertices matching certain criteria.
 let GenerateExampleMetadata () =
+
+    // A list of ExampleInfo record types used to represent the metadata of the
+    // example graph.
     let metadata = [
         {
             Id = "0";
@@ -317,6 +334,8 @@ let GenerateExampleMetadata () =
         }
     ]
 
+    // The above list is then converted to a list of Maps with string keye and
+    // values.
     List.map (fun row ->
         Map.empty
             .Add("Id", row.Id)
@@ -350,15 +369,18 @@ let moveRoute metadata graph (zipper : Zipper<Vert, AppEdge> ref) request =
 
         // Determine the move operation to use.
         let moveRes = match moveOp with
+
                         // Standard operations:
                         | ToVertex vval -> moveToVertex (graph, zipper.Value, vval)
                         | AlongEdge edge -> moveAlongEdge (graph, zipper.Value, (newEdge edge.Source edge.Target edge.Tag -1))
                         | FirstEdge s -> moveAlongFirstMatchingEdge(graph, zipper.Value, (fun ve -> ve.Tag = s))
                         | FirstVertex co -> moveAlongFirstMatchingVertex(graph, zipper.Value, mkCompOp co)
+
                         // History operations:
                         | Back -> Some(moveBack zipper.Value)
                         | Forward -> Some(moveForward zipper.Value)
                         | GoToHistory i -> Some(moveToHistoryIndex i zipper.Value)
+
                         // Special operations
                         | ForceToVertex vval -> forceMoveToVertex (graph, zipper.Value, vval)
                         | MetadataSearch query -> findFirstWithMetadata metadata graph zipper query
@@ -369,9 +391,18 @@ let moveRoute metadata graph (zipper : Zipper<Vert, AppEdge> ref) request =
 
         // Attempt to complete the move operation.
         match moveRes with
+
+            // If the move operation did not return any zipper, the move
+            // operation failed. Therefore, return a 404 (Not found) HTTP
+            // response.
             | None ->
                 printfn "Remained at vertex %s (%i) as move action did not return a valid vertex." zipper.Value.Cursor.Tag zipper.Value.Cursor.Value
                 NOT_FOUND "No valid vertex to move to."
+
+            // Otherwise, if a zipper was returned, the move operation was
+            // successful. This is true even if the move action resulted in the
+            // zipper remaining where it was. The response will contain the new
+            // cursor for the zipper.
             | Some newZipper ->
                 if (newZipper.Cursor.Equals(zipper.Value.Cursor)) then
                     printfn "Remained at vertex %s (%i) as move action returned the same vertex." newZipper.Cursor.Tag newZipper.Cursor.Value
@@ -434,50 +465,75 @@ let getHistory (zipper : Zipper<Vert, AppEdge> ref) _request =
 
     // Create a representation of the move history since functions cannot be
     // converted to JSON.
-    let moveHistory = List.map ( fun (move : Move<Vert, AppEdge>) ->
-                                    match move with
-                                        | Move.ToVertex (source, target) ->
-                                            Map.empty
-                                                .Add("SourceTag", string source.Tag)
-                                                .Add("SourceValue", string source.Value)
-                                                .Add("TargetTag", string target.Tag)
-                                                .Add("TargetValue", string target.Value)
-                                                .Add("MoveType", "ToVertex")
-                                        | Move.AlongEdge (source, edge) ->
-                                            Map.empty
-                                                .Add("SourceTag", string source.Tag)
-                                                .Add("SourceValue", string source.Value)
-                                                .Add("TargetTag", string edge.Target.Tag)
-                                                .Add("TargetValue", string edge.Target.Value)
-                                                .Add("EdgeTag", string edge.Tag)
-                                                .Add("EdgeValue", string edge.Value)
-                                                .Add("MoveType", "AlongEdge")
-                                        | Move.FirstEdgeMatching (source, func, edge) ->
-                                            Map.empty
-                                                .Add("SourceTag", string source.Tag)
-                                                .Add("SourceValue", string source.Value)
-                                                .Add("TargetTag", string edge.Target.Tag)
-                                                .Add("TargetValue", string edge.Target.Value)
-                                                .Add("EdgeTag", string edge.Tag)
-                                                .Add("EdgeValue", string edge.Value)
-                                                .Add("Function", string func)
-                                                .Add("MoveType", "FirstEdgeMatching")
-                                        | Move.FirstVertexMatching (source, func, target) ->
-                                            Map.empty
-                                                .Add("SourceTag", string source.Tag)
-                                                .Add("SourceValue", string source.Value)
-                                                .Add("TargetTag", string target.Tag)
-                                                .Add("TargetValue", string target.Value)
-                                                .Add("Function", string func)
-                                                .Add("MoveType", "FirstVertexMatching")
-                                        | Move.ForceToVertex (source, target) ->
-                                            Map.empty
-                                                .Add("SourceTag", string source.Tag)
-                                                .Add("SourceValue", string source.Value)
-                                                .Add("TargetTag", string target.Tag)
-                                                .Add("TargetValue", string target.Value)
-                                                .Add("MoveType", "ForceToVertex")
-                                    ) (zipper.Value).History
+    let moveHistory =
+        List.map ( fun (move : Move<Vert, AppEdge>) ->
+            match move with
+
+                // The representation is a map with strings as both the key
+                // and value.
+                // Each type of move has at least the five keyes used here:
+                // - SourceTag: the tag of the source vertex;
+                // - SourceValue: the value of the source vertex;
+                // - TargetTag: the tag of the target vertex;
+                // - TargetValue: the value of the target vertex; and
+                // - MoveType: The name of the move function.
+                | Move.ToVertex (source, target) ->
+                    Map.empty
+                        .Add("SourceTag", string source.Tag)
+                        .Add("SourceValue", string source.Value)
+                        .Add("TargetTag", string target.Tag)
+                        .Add("TargetValue", string target.Value)
+                        .Add("MoveType", "ToVertex")
+
+                // AlongEdge also adds:
+                // - EdgeTag: the tag of the edge travelled across; and
+                // - EdgeValue: the value of the edge travelled across.
+                | Move.AlongEdge (source, edge) ->
+                    Map.empty
+                        .Add("SourceTag", string source.Tag)
+                        .Add("SourceValue", string source.Value)
+                        .Add("TargetTag", string edge.Target.Tag)
+                        .Add("TargetValue", string edge.Target.Value)
+                        .Add("EdgeTag", string edge.Tag)
+                        .Add("EdgeValue", string edge.Value)
+                        .Add("MoveType", "AlongEdge")
+
+                // FirstEdgeMatching also adds:
+                // - Function: a string represenation of the function used.
+                | Move.FirstEdgeMatching (source, func, edge) ->
+                    Map.empty
+                        .Add("SourceTag", string source.Tag)
+                        .Add("SourceValue", string source.Value)
+                        .Add("TargetTag", string edge.Target.Tag)
+                        .Add("TargetValue", string edge.Target.Value)
+                        .Add("EdgeTag", string edge.Tag)
+                        .Add("EdgeValue", string edge.Value)
+                        .Add("Function", string func)
+                        .Add("MoveType", "FirstEdgeMatching")
+
+                // FirstVertexMatching uses the same as the above, except it
+                // does not include the edge keys.
+                | Move.FirstVertexMatching (source, func, target) ->
+                    Map.empty
+                        .Add("SourceTag", string source.Tag)
+                        .Add("SourceValue", string source.Value)
+                        .Add("TargetTag", string target.Tag)
+                        .Add("TargetValue", string target.Value)
+                        .Add("Function", string func)
+                        .Add("MoveType", "FirstVertexMatching")
+
+                // ForceToVertex uses the same as ToVertex.
+                | Move.ForceToVertex (source, target) ->
+                    Map.empty
+                        .Add("SourceTag", string source.Tag)
+                        .Add("SourceValue", string source.Value)
+                        .Add("TargetTag", string target.Tag)
+                        .Add("TargetValue", string target.Value)
+                        .Add("MoveType", "ForceToVertex")
+            ) (zipper.Value).History
+
+    // Send the move history created above, as well as the vertex history, and
+    // the current history index in the response.
     OK (Json.serialize {| MoveHistory = moveHistory; VertexHistory = (zipper.Value).VertHistory; HistoryIndex = (zipper.Value).HistoryIndex |})
 
 // Handles the routes for the example.

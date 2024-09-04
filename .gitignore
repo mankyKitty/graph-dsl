@@ -461,3 +461,6 @@ graph-dsl.sln
 
 # Environment file
 .env
+
+# SyncToy marker file
+SyncToy*.dat

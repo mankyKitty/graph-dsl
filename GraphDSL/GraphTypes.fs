@@ -1,4 +1,9 @@
-﻿module GraphDSL.Types
+﻿// -----------------------------------------------------------------------------
+// Contains any additional types used alongside QuikGraph to create the graphs
+// used in this library, as well as functions for creating and modifying graphs.
+// -----------------------------------------------------------------------------
+
+module GraphDSL.Types
 
 open System
 
@@ -30,6 +35,7 @@ type TaggedValueEdge<'Vertex, 'Tag, 'Value>(source : 'Vertex, target : 'Vertex, 
     member this.Value
         with get () = value
         and set (newValue) =
+
             // I could not figure out how to make this return without sending
             // an event if the value to set is the same. Attempting to use an
             // if or match statement returned the error "A type paramater is
@@ -83,14 +89,20 @@ let newVert tag value : Vert =
 
 // Attempts to add an edge to the graph.
 let tryAddEdge (edge: AppEdge) (graph: AppGraph) =
+
+    // Check if the edge already exists first, and if it does, return
+    // immediately with the existing graph.
     if (graph.ContainsEdge(edge)) then
 #if LOGGING && VERBOSE
         printfn "Edge %s (%i) to %s (%i) is already in the graph" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
 #endif
         graph
     else
+
+        // Clone the graph and then attempt to add the edge.
         let newGraph = graph.Clone()
         let success = newGraph.AddEdge(edge)
+
         // If the edge add operation returned false, the edge wasn't added.
         if (not success) then
             printfn "Failed to add edge %s (%i) to %s (%i)" edge.Source.Tag edge.Source.Value edge.Target.Tag edge.Target.Value
@@ -105,6 +117,7 @@ let tryAddEdge (edge: AppEdge) (graph: AppGraph) =
 
 // Attempts to add a vertex to the graph.
 let tryAddVertex (vert: Vert) (graph: AppGraph) =
+
     // Check if the vertex already exists first, and if it does, return
     // immediately with the existing graph.
     if (graph.ContainsVertex(vert)) then
@@ -113,8 +126,11 @@ let tryAddVertex (vert: Vert) (graph: AppGraph) =
 #endif
         graph
     else
+
+        // Clone the graph and then attempt to add the vertex.
         let newGraph = graph.Clone()
         let success = newGraph.AddVertex(vert)
+
         // If the vertex add operation returned false, the vertex wasn't added.
         if (not success) then
             printfn "Failed to add vertex %s (%i)" vert.Tag vert.Value
@@ -131,6 +147,7 @@ let tryAddVertex (vert: Vert) (graph: AppGraph) =
 // Duplicate edges will be ignored, but an error with adding any edge will stop
 // the whole operation and return the original graph.
 let tryAddEdges (edges: AppEdge list) (graph : AppGraph) =
+
     // First, make sure at least one edge is not already in the graph.
     match List.tryFind (fun edge -> not (graph.ContainsEdge(edge))) edges with
         | None ->
@@ -138,6 +155,7 @@ let tryAddEdges (edges: AppEdge list) (graph : AppGraph) =
                 printfn "All %i edge(s) are already in the graph" (List.length edges)
 #endif
                 graph
+
         // If there are at least some edges that can be added, attempt to do
         // so.
         | Some _ ->
@@ -159,6 +177,7 @@ let tryAddEdges (edges: AppEdge list) (graph : AppGraph) =
 // Duplicate vertices will be ignored, but an error with adding any vertex will
 // stop the whole operation and return the original graph.
 let tryAddVertices (verts: Vert list) (graph : AppGraph) =
+
     // First, make sure at least one edge is not already in the graph.
     match List.tryFind (fun vert -> not (graph.ContainsVertex(vert))) verts with
         | None ->
@@ -166,6 +185,7 @@ let tryAddVertices (verts: Vert list) (graph : AppGraph) =
                 printfn "All %i vertices are already in the graph" (List.length verts)
 #endif
                 graph
+
         // If there are at least some vertices that can be added, attempt to
         // do so.
         | Some _ ->
