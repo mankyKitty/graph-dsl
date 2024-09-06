@@ -58,6 +58,7 @@ module Basic =
         printfn "Resetting edge values..."
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
         Seq.iter (fun (edge : AppEdge) -> edge.Value <- ScoringValues.DEFAULT_EDGE_VALUE) newGraph.Edges
@@ -75,6 +76,7 @@ module Basic =
         printfn "Changing edge values to number of target's connections..."
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
         Seq.iter (fun (edge : AppEdge) -> edge.Value <- Seq.length (newGraph.OutEdges(edge.Target))) newGraph.Edges
@@ -93,6 +95,7 @@ module Basic =
         printfn "Changing edge values to number of target's connections (from %s only)..." origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
         Seq.iter (fun (edge : AppEdge) -> edge.Value <- Seq.length (newGraph.OutEdges(edge.Target))) (newGraph.OutEdges(origin))
@@ -179,6 +182,7 @@ module WeightedDFS =
 #if LOGGING && VERBOSE
             printfn "------ Calculating score for edge %s to %s ------" edge.Source.Tag edge.Target.Tag
 #endif
+
             // Initialise the list of visited verticies for this starting point.
             // At present, I'm not sure how to keep a record of what vertices have
             // been visited without using an array that can change outside the
@@ -211,6 +215,7 @@ module WeightedDFS =
         printfn "Changing edge values to weighted score based on number of connections and %i steps, using depth first search..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
 
@@ -248,6 +253,7 @@ module WeightedDFS =
         printfn "Changing edge values to weighted score based on number of connections and %i steps, using depth first search (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
 
@@ -338,6 +344,7 @@ module WeightedDFS =
 #if LOGGING && VERBOSE
             printfn "------ Calculating score for edge %s to %s ------" edge.Source.Tag edge.Target.Tag
 #endif
+
             // Initialise the list of visited verticies for this starting point.
             // At present, I'm not sure how to keep a record of what vertices have
             // been visited without using an array that can change outside the
@@ -368,6 +375,7 @@ module WeightedDFS =
         printfn "Changing edge values to weighted score based on condition and %i steps, using depth first search..." numSteps
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
 
@@ -400,6 +408,7 @@ module WeightedDFS =
         printfn "Changing edge values to weighted score based on condition and %i steps, using depth first search (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
 
@@ -616,6 +625,7 @@ module WeightedBFS =
 #if LOGGING && VERBOSE
             printfn "Added %f to score from edges from %s" score edge.Target.Tag
 #endif
+
             // Do not traverse if the number of steps is one.
             if (numSteps > 1) then
 
@@ -737,6 +747,7 @@ module WeightedBFS =
         printfn "Changing edge values to weighted score based on condition and %i steps, using breadth first search (from %s only)..." numSteps origin.Tag
         let stopWatch = Stopwatch.StartNew()
 #endif
+
         // Clone the existing graph so that the original one is not modified.
         let newGraph = deepCloneAppGraph(graph)
 
