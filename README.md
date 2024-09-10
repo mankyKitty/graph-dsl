@@ -4,14 +4,9 @@ A set of functions for creating and navigating a network graph of transcriptiona
 This library is intended to follow functional principles as much as possible, such as avoiding mutable values and side effects, and allowing currying and piping.
 
 ## Building and running
-Run the following commands in the repository's root folder:
-```
-dotnet build
-dotnet run
-```
-When the Suave server is started, you can use a tool to send requests to the server, such as [curl](https://curl.se/) (see the examples below) or [Postman](https://www.postman.com/).
+As a .NET project, this library requires [.NET 6.0](https://dotnet.microsoft.com/en-us/download/dotnet/6.0). If you have it installed, run the command `dotnet build` in the repository's root folder to build the library.
 
-You can also open the NetworkVis.html file in a browser for a visual example of exploring a graph. This page uses vis-network.
+This project also includes a small example program to demonstrate how the zipper can be used, a [Suave](http://suave.io/) server that allows navigation over a tiny graph. Use the command `dotnet run` to start the server. You can then use a tool to send requests to the server, such as [curl](https://curl.se/) (see the examples below) or [Postman](https://www.postman.com/), or open the NetworkVis.html file in a browser for a visual example of exploring a graph.
 
 ## Example curl commands
 For a full list of possible commands, see the "Server commands" section in the [wiki](https://github.com/mankyKitty/graph-dsl/wiki).
